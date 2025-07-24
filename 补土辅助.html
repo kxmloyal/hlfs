@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>多组力向量可视化工具 - 同一圆上呈现</title>
-   <script src="tailwindcss.min.js"></script>
-   <link href="font-awesome.min.css" rel="stylesheet">
-   <script src="chart.umd.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <link rel="manifest" href="manifest.json">
     
     <!-- Tailwind 配置 -->
     <script>
@@ -151,10 +152,44 @@
                 border-left: 1px solid rgba(0, 0, 0, 0.1);
                 border-right: 1px solid rgba(0, 0, 0, 0.1);
             }
+            .slider-container {
+                margin-bottom: 1.5rem;
+            }
+            .control-panel {
+                background-color: rgba(249, 250, 251, 0.8);
+                backdrop-filter: blur(4px);
+            }
+            .notification {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 6px;
+                background-color: #10B981;
+                color: white;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                transform: translateY(100px);
+                opacity: 0;
+                transition: all 0.3s ease;
+                z-index: 1000;
+            }
+            .notification.show {
+                transform: translateY(0);
+                opacity: 1;
+            }
         }
     </style>
 </head>
 <body class="bg-gradient-to-br from-light to-gray-100 min-h-screen font-sans text-dark">
+    <!-- 通知提示 -->
+    <div id="notification" class="notification">操作成功</div>
+    
+    <!-- 离线状态提示 -->
+    <div id="offlineIndicator" class="fixed bottom-4 left-4 bg-warning text-white px-4 py-2 rounded-md shadow-lg hidden z-50">
+        <i class="fa fa-wifi fa-exclamation-triangle mr-2"></i>
+        <span>当前处于离线模式，部分功能可能受限</span>
+    </div>
+
     <header class="container mx-auto px-4 py-6">
         <h1 class="text-[clamp(1.6rem,3vw,2.2rem)] font-bold text-center text-dark mb-2">多组力向量可视化工具</h1>
         <p class="text-center text-gray-600 max-w-2xl mx-auto">多组数据在同一圆上呈现，每组包含两点(P1, P2)及合力点(ST点)，各组数据独立计算</p>
@@ -191,6 +226,111 @@
                         </div>
                     </div>
                     
+                    <!-- 当前组编辑 -->
+                    <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-700 mb-3 flex items-center">
+                            <span class="group-color-indicator mr-2" id="currentGroupColorIndicator"></span>
+                            <span id="currentGroupTitle">组 1</span>
+                            <span id="currentGroupName" class="text-sm ml-2 text-gray-500"></span>
+                        </h3>
+                        
+                        <!-- P1 控制 -->
+                        <div class="mb-4">
+                            <h4 class="font-medium text-primary mb-2 flex items-center">
+                                <i class="fa fa-circle-o mr-1"></i>点 P1
+                                <span id="p1Warning" class="ml-2 text-xs bg-warning/10 text-warning px-2 py-0.5 rounded hidden">
+                                    <i class="fa fa-exclamation-circle mr-1"></i>超过阈值
+                                </span>
+                            </h4>
+                            
+                            <div class="slider-container">
+                                <div class="flex justify-between mb-1">
+                                    <label class="text-sm text-gray-600">重量</label>
+                                    <span id="p1WeightValue" class="text-sm font-medium">35.75</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    id="p1Weight" 
+                                    min="0.01" 
+                                    max="100" 
+                                    step="0.01" 
+                                    value="35.75"
+                                    class="w-full slider-track"
+                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
+                                >
+                                <input type="number" id="p1WeightInput" min="0.01" max="100" step="0.01" value="35.75"
+                                    class="w-full mt-2 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                            </div>
+                            
+                            <div class="slider-container">
+                                <div class="flex justify-between mb-1">
+                                    <label class="text-sm text-gray-600">角度 (°)</label>
+                                    <span id="p1AngleValue" class="text-sm font-medium">310.3°</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    id="p1Angle" 
+                                    min="0" 
+                                    max="360" 
+                                    step="0.1" 
+                                    value="310.3"
+                                    class="w-full slider-track"
+                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
+                                >
+                                <input type="number" id="p1AngleInput" min="0" max="360" step="0.1" value="310.3"
+                                    class="w-full mt-2 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                            </div>
+                        </div>
+                        
+                        <!-- P2 控制 -->
+                        <div>
+                            <h4 class="font-medium text-secondary mb-2 flex items-center">
+                                <i class="fa fa-circle-o mr-1"></i>点 P2
+                                <span id="p2Warning" class="ml-2 text-xs bg-warning/10 text-warning px-2 py-0.5 rounded hidden">
+                                    <i class="fa fa-exclamation-circle mr-1"></i>超过阈值
+                                </span>
+                            </h4>
+                            
+                            <div class="slider-container">
+                                <div class="flex justify-between mb-1">
+                                    <label class="text-sm text-gray-600">重量</label>
+                                    <span id="p2WeightValue" class="text-sm font-medium">11.98</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    id="p2Weight" 
+                                    min="0.01" 
+                                    max="100" 
+                                    step="0.01" 
+                                    value="11.98"
+                                    class="w-full slider-track"
+                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
+                                >
+                                <input type="number" id="p2WeightInput" min="0.01" max="100" step="0.01" value="11.98"
+                                    class="w-full mt-2 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                            </div>
+                            
+                            <div class="slider-container">
+                                <div class="flex justify-between mb-1">
+                                    <label class="text-sm text-gray-600">角度 (°)</label>
+                                    <span id="p2AngleValue" class="text-sm font-medium">50.1°</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    id="p2Angle" 
+                                    min="0" 
+                                    max="360" 
+                                    step="0.1" 
+                                    value="50.1"
+                                    class="w-full slider-track"
+                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
+                                >
+                                <input type="number" id="p2AngleInput" min="0" max="360" step="0.1" value="50.1"
+                                    class="w-full mt-2 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- 显示/隐藏控制 -->
                     <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <h3 class="text-lg font-medium text-gray-700 mb-3 flex items-center">
@@ -224,173 +364,61 @@
                             </label>
                             <label class="flex items-center">
                                 <input type="checkbox" id="showAngleMarkers" checked class="form-checkbox h-4 w-4 text-primary">
-                                <span class="ml-2 text-sm">显示角度标记 (0°-360°)</span>
+                                <span class="ml-2 text-sm">显示角度标记</span>
                             </label>
                         </div>
                     </div>
-                    
-                    <!-- 当前组数据控制 -->
-                    <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                        <h3 class="text-lg font-medium text-primary mb-3 flex items-center">
-                            <span class="group-color-indicator" id="currentGroupColorIndicator"></span>
-                            <span id="currentGroupTitle">点 P1 (当前组)</span>
+
+                    <!-- 阈值设置 -->
+                    <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-700 mb-3 flex items-center">
+                            <i class="fa fa-exclamation-triangle text-warning mr-2"></i>重量阈值设置
                         </h3>
                         
-                        <div class="space-y-4">
-                            <!-- P1 重量控制 -->
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    P1 重量: <span id="p1WeightValue" class="font-semibold">35.75</span>
-                                    <span id="p1Warning" class="hidden ml-2 text-xs text-warning">
-                                        <i class="fa fa-exclamation-circle"></i> 超出阈值
-                                    </span>
-                                </label>
-                                <input 
-                                    type="range" 
-                                    id="p1Weight" 
-                                    min="0.01" 
-                                    max="50" 
-                                    step="0.01" 
-                                    value="35.75"
-                                    class="w-full slider-track"
-                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
-                                >
-                            </div>
-                            
-                            <!-- P1 角度控制 -->
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    P1 角度: <span id="p1AngleValue" class="font-semibold">310.3°</span>
-                                </label>
-                                <input 
-                                    type="range" 
-                                    id="p1Angle" 
-                                    min="0" 
-                                    max="360" 
-                                    step="0.1" 
-                                    value="310.3"
-                                    class="w-full slider-track"
-                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
-                                >
-                            </div>
-                            
-                            <!-- P2 重量控制 -->
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    P2 重量: <span id="p2WeightValue" class="font-semibold">11.98</span>
-                                    <span id="p2Warning" class="hidden ml-2 text-xs text-warning">
-                                        <i class="fa fa-exclamation-circle"></i> 超出阈值
-                                    </span>
-                                </label>
-                                <input 
-                                    type="range" 
-                                    id="p2Weight" 
-                                    min="0.01" 
-                                    max="50" 
-                                    step="0.01" 
-                                    value="11.98"
-                                    class="w-full slider-track"
-                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
-                                >
-                            </div>
-                            
-                            <!-- P2 角度控制 -->
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    P2 角度: <span id="p2AngleValue" class="font-semibold">50.1°</span>
-                                </label>
-                                <input 
-                                    type="range" 
-                                    id="p2Angle" 
-                                    min="0" 
-                                    max="360" 
-                                    step="0.1" 
-                                    value="50.1"
-                                    class="w-full slider-track"
-                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
-                                >
-                            </div>
-                            
-                            <!-- 数值输入框 -->
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-xs text-gray-500 mb-1">P1 精确重量</label>
-                                    <input type="number" id="p1WeightInput" min="0.01" max="50" step="0.01" value="35.75"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
-                                </div>
-                                <div>
-                                    <label class="block text-xs text-gray-500 mb-1">P1 精确角度</label>
-                                    <input type="number" id="p1AngleInput" min="0" max="360" step="0.1" value="310.3"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
-                                </div>
-                                <div>
-                                    <label class="block text-xs text-gray-500 mb-1">P2 精确重量</label>
-                                    <input type="number" id="p2WeightInput" min="0.01" max="50" step="0.01" value="11.98"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
-                                </div>
-                                <div>
-                                    <label class="block text-xs text-gray-500 mb-1">P2 精确角度</label>
-                                    <input type="number" id="p2AngleInput" min="0" max="360" step="0.1" value="50.1"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
-                                </div>
-                            </div>
+                        <div class="mb-3">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                阈值: <span id="thresholdValue" class="font-semibold">30</span>
+                            </label>
+                            <input 
+                                type="range" 
+                                id="thresholdSlider" 
+                                min="0.01" 
+                                max="50" 
+                                step="0.01" 
+                                value="30"
+                                class="w-full slider-track"
+                                style="--slider-thumb-color: theme('colors.warning')"
+                            >
                         </div>
-                    </div>
-                    
-                    <!-- 重量阈值设置 -->
-                    <div class="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-100">
-                        <h3 class="text-lg font-medium text-warning mb-3 flex items-center">
-                            <i class="fa fa-exclamation-triangle mr-2"></i>重量阈值设置
-                        </h3>
                         
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    阈值: <span id="thresholdValue" class="font-semibold">30</span>
-                                </label>
-                                <input 
-                                    type="range" 
-                                    id="thresholdSlider" 
-                                    min="0.01" 
-                                    max="50" 
-                                    step="0.01" 
-                                    value="30"
-                                    class="w-full slider-track"
-                                    style="--slider-thumb-color: theme('colors.warning')"
-                                >
-                            </div>
-                            
-                            <div>
-                                <label class="block text-xs text-gray-500 mb-1">精确输入阈值</label>
-                                <input type="number" id="thresholdInput" min="0.01" max="50" step="0.01" value="30"
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-warning/50">
-                            </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">精确输入阈值</label>
+                            <input type="number" id="thresholdInput" min="0.01" max="50" step="0.01" value="30"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-warning/50">
                         </div>
                     </div>
                 </div>
                 
                 <!-- 右侧图表和结果 -->
                 <div class="lg:col-span-2">
+                    <!-- 图表错误提示 -->
+                    <div id="chartError" class="hidden bg-warning/10 text-warning p-3 rounded-lg mb-4">
+                        <i class="fa fa-exclamation-circle mr-2"></i>
+                        <span>图表加载失败，请刷新页面重试</span>
+                    </div>
+                    
                     <!-- 图表容器 -->
                     <div class="mb-8">
-                        <h2 class="text-xl font-semibold mb-4 flex items-center">
-                            <i class="fa fa-area-chart text-primary mr-2"></i>多组力向量可视化
-                            <span id="currentGroupName" class="ml-2 text-sm font-normal text-gray-500">（当前编辑：组 1）</span>
-                        </h2>
-                        <div class="circle-container border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                        <div class="circle-container">
                             <div class="circle-wrapper">
                                 <canvas id="forceChart" class="circle-canvas"></canvas>
-                                <div id="chartError" class="chart-error hidden absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                                    <p class="text-warning"><i class="fa fa-exclamation-circle mr-2"></i>图表加载失败</p>
-                                </div>
-                                <!-- 缩放控制按钮 -->
                                 <div class="zoom-controls">
                                     <button id="zoomOutBtn" class="zoom-btn">
-                                        <i class="fa fa-minus text-gray-600"></i>
+                                        <i class="fa fa-search-minus text-gray-600"></i>
                                     </button>
                                     <div id="zoomLevel" class="zoom-level">100%</div>
                                     <button id="zoomInBtn" class="zoom-btn">
-                                        <i class="fa fa-plus text-gray-600"></i>
+                                        <i class="fa fa-search-plus text-gray-600"></i>
                                     </button>
                                     <button id="resetZoomBtn" class="zoom-btn">
                                         <i class="fa fa-refresh text-gray-600"></i>
@@ -495,11 +523,78 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // 显示通知
+            function showNotification(message, type = 'success') {
+                const notification = document.getElementById('notification');
+                notification.textContent = message;
+                
+                // 设置通知类型样式
+                notification.className = 'notification';
+                if (type === 'success') {
+                    notification.classList.add('bg-resultant');
+                } else if (type === 'error') {
+                    notification.classList.add('bg-warning');
+                }
+                
+                notification.classList.add('show');
+                
+                // 3秒后隐藏
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, 3000);
+            }
+            
             // 检查Chart.js是否加载成功
             if (typeof Chart === 'undefined') {
                 console.error('Chart.js未加载成功');
                 document.getElementById('chartError').classList.remove('hidden');
                 return;
+            }
+            
+            // 离线状态检测与提示
+            const offlineIndicator = document.getElementById('offlineIndicator');
+            
+            function updateOnlineStatus() {
+                if (!navigator.onLine) {
+                    offlineIndicator.classList.remove('hidden');
+                } else {
+                    offlineIndicator.classList.add('hidden');
+                }
+            }
+            
+            // 初始检查
+            updateOnlineStatus();
+            
+            // 监听在线/离线状态变化
+            window.addEventListener('online', updateOnlineStatus);
+            window.addEventListener('offline', updateOnlineStatus);
+            
+            // 注册Service Worker
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('./service-worker.js')
+                        .then((registration) => {
+                            console.log('ServiceWorker注册成功:', registration.scope);
+                            
+                            // 监听更新事件
+                            registration.addEventListener('updatefound', () => {
+                                const newWorker = registration.installing;
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'installed') {
+                                        // 有新版本可用时提示用户
+                                        if (navigator.serviceWorker.controller) {
+                                            if (confirm('应用有更新，是否刷新获取最新版本？')) {
+                                                window.location.reload();
+                                            }
+                                        }
+                                    }
+                                });
+                            });
+                        })
+                        .catch((err) => {
+                            console.log('ServiceWorker注册失败:', err);
+                        });
+                });
             }
             
             // 预定义一组区分度高的颜色，用于不同数据组
@@ -554,39 +649,11 @@
             // 历史记录 - 保存所有已保存的数据组
             let savedHistory = JSON.parse(localStorage.getItem('forceVectorSavedHistory')) || [];
             
-            // 缩放相关变量
+            // 缩放控制
             let zoomLevel = 100; // 百分比
-            const minZoom = 50;  // 最小缩放百分比
-            const maxZoom = 300; // 最大缩放百分比
-            const zoomStep = 10; // 每次缩放步长
-            
-            // 获取DOM元素
-            const canvas = document.getElementById('forceChart');
-            const ctx = canvas.getContext('2d');
-            const zoomInBtn = document.getElementById('zoomInBtn');
-            const zoomOutBtn = document.getElementById('zoomOutBtn');
-            const resetZoomBtn = document.getElementById('resetZoomBtn');
-            const zoomLevelDisplay = document.getElementById('zoomLevel');
-            
-            // 检查Canvas是否可用
-            if (!canvas || !ctx) {
-                console.error('无法初始化Canvas');
-                document.getElementById('chartError').classList.remove('hidden');
-                return;
-            }
-            
-            // 高DPI支持
-            function setupHighDpiCanvas() {
-                const dpr = window.devicePixelRatio || 1;
-                const rect = canvas.getBoundingClientRect();
-                
-                canvas.width = rect.width * dpr;
-                canvas.height = rect.height * dpr;
-                ctx.scale(dpr, dpr);
-                
-                canvas.style.width = `${rect.width}px`;
-                canvas.style.height = `${rect.height}px`;
-            }
+            const minZoom = 50;
+            const maxZoom = 200;
+            const zoomStep = 10;
             
             // 初始化高DPI
             setupHighDpiCanvas();
@@ -717,32 +784,28 @@
                 
                 dataGroups.forEach((group, index) => {
                     const groupItem = document.createElement('div');
-                    groupItem.className = `data-group-item p-2 mb-1 rounded border border-gray-200 flex justify-between items-center ${index === currentGroupIndex ? 'active' : ''}`;
+                    groupItem.className = `data-group-item p-2 rounded-md border mb-1 cursor-pointer ${index === currentGroupIndex ? 'active' : ''}`;
                     groupItem.innerHTML = `
-                        <div class="flex items-center">
-                            <span class="group-color-indicator mr-2" style="background-color: ${group.color}"></span>
-                            <span class="text-sm">${group.name}</span>
-                            <span class="ml-2 text-xs text-gray-500">(ST:</span>
-                            <span class="st-color-indicator ml-1" style="background-color: ${group.stColor}"></span>
-                            <span class="text-xs text-gray-500">)</span>
-                        </div>
-                        <div>
-                            <button data-index="${index}" class="rename-group text-gray-500 hover:text-primary text-xs mr-1">
-                                <i class="fa fa-pencil"></i>
-                            </button>
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center">
+                                <span class="group-color-indicator" style="background-color: ${group.color};"></span>
+                                <span>${group.name}</span>
+                            </div>
+                            <div class="flex space-x-1">
+                                <button class="rename-group text-gray-400 hover:text-primary text-xs p-1">
+                                    <i class="fa fa-pencil"></i>
+                                </button>
+                            </div>
                         </div>
                     `;
-                    container.appendChild(groupItem);
                     
-                    // 点击切换数据组
-                    groupItem.addEventListener('click', function(e) {
-                        if (!e.target.closest('.rename-group')) {
-                            currentGroupIndex = index;
-                            renderDataGroups();
-                            updateChart();
-                            updateResults();
-                            updateLegend();
-                        }
+                    // 点击切换当前数据组
+                    groupItem.addEventListener('click', function() {
+                        currentGroupIndex = index;
+                        renderDataGroups();
+                        updateChart();
+                        updateResults();
+                        updateLegend();
                     });
                     
                     // 重命名数据组
@@ -754,6 +817,7 @@
                             renderDataGroups();
                             updateResults();
                             updateLegend();
+                            showNotification('数据组已重命名');
                         }
                     });
                 });
@@ -769,7 +833,7 @@
                 thresholdItem.className = 'flex items-center';
                 thresholdItem.innerHTML = `
                     <span class="group-color-indicator mr-1" style="background-color: transparent; border: 1.5px dashed #EF4444;"></span>
-                    <span>重量阈值 (${weightThreshold})</span>
+                    <span>重量阈值 (${weightThreshold.toFixed(2)})</span>
                 `;
                 container.appendChild(thresholdItem);
                 
@@ -816,7 +880,7 @@
                         <td class="py-2 px-4">
                             <div class="flex space-x-2">
                                 <button data-index="${savedHistory.length - 1 - index}" class="load-history text-primary text-xs">
-                                    <i class="fa fa-load"></i> 加载
+                                    <i class="fa fa-download"></i> 加载
                                 </button>
                                 <button data-index="${savedHistory.length - 1 - index}" class="delete-history text-gray-500 hover:text-warning text-xs">
                                     <i class="fa fa-trash-o"></i> 删除
@@ -835,6 +899,7 @@
                         
                         // 创建新的数据组并加载历史数据
                         addNewDataGroup(item.name, item.p1, item.p2);
+                        showNotification('历史数据已加载');
                     });
                 });
                 
@@ -843,14 +908,40 @@
                         if (confirm('确定要删除这条历史记录吗？')) {
                             const index = parseInt(this.getAttribute('data-index'));
                             savedHistory.splice(index, 1);
-                            localStorage.setItem('forceVectorSavedHistory', JSON.stringify(savedHistory));
+                            saveToLocalStorage(savedHistory);
                             renderHistoryTable();
+                            showNotification('历史记录已删除');
                         }
                     });
                 });
             }
             
             let forceChart;
+            
+            // 节流函数，避免频繁更新图表
+            function throttle(func, limit) {
+                let lastFunc;
+                let lastRan;
+                return function() {
+                    const context = this;
+                    const args = arguments;
+                    if (!lastRan) {
+                        func.apply(context, args);
+                        lastRan = Date.now();
+                    } else {
+                        clearTimeout(lastFunc);
+                        lastFunc = setTimeout(function() {
+                            if ((Date.now() - lastRan) >= limit) {
+                                func.apply(context, args);
+                                lastRan = Date.now();
+                            }
+                        }, limit - (Date.now() - lastRan));
+                    }
+                };
+            }
+            
+            // 带节流的图表更新函数
+            const throttledUpdateChart = throttle(updateChart, 100);
             
             // 更新图表 - 所有数据组在同一个圆上显示
             function updateChart() {
@@ -966,28 +1057,28 @@
                             });
                         }
                         
-                        // P1点 - 统一且更小的点大小
+                        // P1点
                         if (displayOptions.showP1) {
                             datasets.push({
-                                label: `${group.name} P1 (${group.p1.weight.toFixed(2)}, ${group.p1.angle.toFixed(1)}°)`,
+                                label: `${group.name} P1 (${group.p1.weight}, ${group.p1.angle}°)`,
                                 data: [p1],
                                 backgroundColor: group.p1.weight > weightThreshold ? 
-                                    'rgba(239, 68, 68, 0.9)' : `${group.color}E0`,
+                                    'rgba(239, 68, 68, 0.9)' : `${group.color}C0`,
                                 borderColor: group.p1.weight > weightThreshold ? 
                                     'rgba(239, 68, 68, 1)' : group.color,
                                 borderWidth: isCurrentGroup ? 1.5 : 1,
                                 pointRadius: isCurrentGroup ? 4 : 3,  // 统一且更小的点大小
                                 pointHoverRadius: isCurrentGroup ? 6 : 5,
-                                z: isCurrentGroup ? 20 : 10,
+                                z: isCurrentGroup ? 19 : 9,
                                 pointType: 'P1',
                                 groupName: group.name
                             });
                         }
                         
-                        // P2点 - 统一且更小的点大小（与P1相同）
+                        // P2点
                         if (displayOptions.showP2) {
                             datasets.push({
-                                label: `${group.name} P2 (${group.p2.weight.toFixed(2)}, ${group.p2.angle.toFixed(1)}°)`,
+                                label: `${group.name} P2 (${group.p2.weight}, ${group.p2.angle}°)`,
                                 data: [p2],
                                 backgroundColor: group.p2.weight > weightThreshold ? 
                                     'rgba(239, 68, 68, 0.9)' : `${group.color}C0`,
@@ -1039,147 +1130,120 @@
                             const majorInterval = 30;
                             const minorInterval = 10;
                             const markerRadius = maxRadius * 1.05; // 略大于最大半径
-                            const tickLength = 6; // 刻度线长度
-                            const textOffset = 12; // 文本距离刻度线的偏移量
+                            const centerX = scales.x.getPixelForValue(0);
+                            const centerY = scales.y.getPixelForValue(0);
                             
-                            // 绘制主要角度标记（0°, 30°, 60°, ..., 330°）
-                            for (let angle = 0; angle < 360; angle += majorInterval) {
-                                const rad = (angle * Math.PI) / 180;
+                            // 绘制角度标记
+                            for (let angle = 0; angle < 360; angle += minorInterval) {
+                                const rad = angle * Math.PI / 180;
+                                const x = centerX + markerRadius * Math.cos(rad);
+                                const y = centerY - markerRadius * Math.sin(rad); // 减去因为Canvas Y轴向下
                                 
-                                // 计算标记点位置
-                                const x1 = markerRadius * Math.cos(rad);
-                                const y1 = markerRadius * Math.sin(rad);
-                                const x2 = (markerRadius - tickLength) * Math.cos(rad);
-                                const y2 = (markerRadius - tickLength) * Math.sin(rad);
-                                
-                                // 转换为画布坐标
-                                const canvasX1 = scales.x.getPixelForValue(x1);
-                                const canvasY1 = scales.y.getPixelForValue(y1);
-                                const canvasX2 = scales.x.getPixelForValue(x2);
-                                const canvasY2 = scales.y.getPixelForValue(y2);
-                                
-                                // 绘制刻度线
-                                ctx.beginPath();
-                                ctx.moveTo(canvasX1, canvasY1);
-                                ctx.lineTo(canvasX2, canvasY2);
-                                ctx.strokeStyle = 'rgba(100, 100, 100, 0.8)';
-                                ctx.lineWidth = 1.5;
-                                ctx.stroke();
-                                
-                                // 绘制角度文本
-                                ctx.font = '11px Inter, sans-serif';
-                                ctx.fillStyle = 'rgba(50, 50, 50, 0.9)';
-                                ctx.textAlign = 'center';
-                                ctx.textBaseline = 'middle';
-                                
-                                // 计算文本位置（稍微向外）
-                                const textX = (markerRadius + textOffset) * Math.cos(rad);
-                                const textY = (markerRadius + textOffset) * Math.sin(rad);
-                                const canvasTextX = scales.x.getPixelForValue(textX);
-                                const canvasTextY = scales.y.getPixelForValue(textY);
-                                
-                                // 特殊处理0°标记
-                                if (angle === 0) {
-                                    ctx.fillText('0°', canvasTextX, canvasTextY - 5);
+                                // 主要标记（每30度）
+                                if (angle % majorInterval === 0) {
+                                    ctx.beginPath();
+                                    ctx.moveTo(
+                                        centerX + (markerRadius - 10) * Math.cos(rad),
+                                        centerY - (markerRadius - 10) * Math.sin(rad)
+                                    );
+                                    ctx.lineTo(x, y);
+                                    ctx.lineWidth = 2;
+                                    ctx.strokeStyle = 'rgba(150, 150, 150, 0.7)';
+                                    ctx.stroke();
+                                    
+                                    // 角度文本
+                                    const textRadius = markerRadius * 1.15;
+                                    const textX = centerX + textRadius * Math.cos(rad);
+                                    const textY = centerY - textRadius * Math.sin(rad);
+                                    
+                                    ctx.font = '11px Arial';
+                                    ctx.fillStyle = '#666';
+                                    ctx.textAlign = 'center';
+                                    ctx.textBaseline = 'middle';
+                                    ctx.fillText(angle + '°', textX, textY);
                                 } else {
-                                    ctx.fillText(`${angle}°`, canvasTextX, canvasTextY);
+                                    // 次要标记（每10度）
+                                    ctx.beginPath();
+                                    ctx.moveTo(
+                                        centerX + (markerRadius - 5) * Math.cos(rad),
+                                        centerY - (markerRadius - 5) * Math.sin(rad)
+                                    );
+                                    ctx.lineTo(x, y);
+                                    ctx.lineWidth = 1;
+                                    ctx.strokeStyle = 'rgba(180, 180, 180, 0.5)';
+                                    ctx.stroke();
                                 }
                             }
                             
-                            // 绘制次要角度标记（更短的刻度线）
-                            for (let angle = 0; angle < 360; angle += minorInterval) {
-                                // 跳过已绘制主要标记的角度
-                                if (angle % majorInterval === 0) continue;
-                                
-                                const rad = (angle * Math.PI) / 180;
-                                
-                                // 计算标记点位置（次要标记更短）
-                                const x1 = markerRadius * Math.cos(rad);
-                                const y1 = markerRadius * Math.sin(rad);
-                                const x2 = (markerRadius - tickLength / 2) * Math.cos(rad);
-                                const y2 = (markerRadius - tickLength / 2) * Math.sin(rad);
-                                
-                                // 转换为画布坐标
-                                const canvasX1 = scales.x.getPixelForValue(x1);
-                                const canvasY1 = scales.y.getPixelForValue(y1);
-                                const canvasX2 = scales.x.getPixelForValue(x2);
-                                const canvasY2 = scales.y.getPixelForValue(y2);
-                                
-                                // 绘制次要刻度线
-                                ctx.beginPath();
-                                ctx.moveTo(canvasX1, canvasY1);
-                                ctx.lineTo(canvasX2, canvasY2);
-                                ctx.strokeStyle = 'rgba(150, 150, 150, 0.6)';
-                                ctx.lineWidth = 1;
-                                ctx.stroke();
-                            }
+                            // 绘制坐标轴
+                            ctx.beginPath();
+                            ctx.moveTo(centerX - maxRadius * 1.1, centerY);
+                            ctx.lineTo(centerX + maxRadius * 1.1, centerY);
+                            ctx.moveTo(centerX, centerY - maxRadius * 1.1);
+                            ctx.lineTo(centerX, centerY + maxRadius * 1.1);
+                            ctx.lineWidth = 1;
+                            ctx.strokeStyle = 'rgba(200, 200, 200, 0.8)';
+                            ctx.stroke();
                             
                             ctx.restore();
                         }
                     };
                     
-                    // 创建标签显示插件
-                    const labelPlugin = {
+                    // 创建点标签插件
+                    const pointLabelPlugin = {
                         id: 'pointLabels',
                         afterDraw: (chart) => {
                             if (!displayOptions.showLabels) return;
                             
-                            const {ctx, chartArea, scales} = chart;
-                            if (!chartArea) return;
+                            const {ctx, scales} = chart;
+                            if (!chart.chartArea) return;
                             
                             ctx.save();
+                            ctx.font = '11px Arial';
+                            ctx.fillStyle = '#333';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
                             
-                            // 遍历所有数据集
-                            chart.data.datasets.forEach((dataset, datasetIndex) => {
-                                // 只处理点数据集（P1, P2, ST）
-                                if (!dataset.pointType) return;
-                                
-                                // 获取数据集的元数据
-                                const meta = chart.getDatasetMeta(datasetIndex);
-                                if (!meta.visible) return;
-                                
-                                // 为每个点绘制标签
-                                meta.data.forEach((element, index) => {
-                                    const point = dataset.data[index];
-                                    if (!point) return;
-                                    
-                                    // 将数据坐标转换为画布坐标
-                                    const x = scales.x.getPixelForValue(point.x);
-                                    const y = scales.y.getPixelForValue(point.y);
-                                    
-                                    // 标签文本
-                                    const label = `${dataset.groupName} ${dataset.pointType}`;
-                                    
-                                    // 设置文本样式
-                                    ctx.font = '11px Inter, sans-serif';
-                                    ctx.fillStyle = dataset.borderColor;
-                                    ctx.textAlign = 'center';
-                                    ctx.textBaseline = 'middle';
-                                    
-                                    // 计算标签位置（在点的右下方）
-                                    const labelX = x + 12;
-                                    const labelY = y + 12;
-                                    
-                                    // 绘制文本阴影，提高可读性
-                                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                                    ctx.fillText(label, labelX, labelY);
-                                });
+                            chart.data.datasets.forEach(dataset => {
+                                if (['P1', 'P2', 'ST'].includes(dataset.pointType)) {
+                                    dataset.data.forEach(point => {
+                                        const x = scales.x.getPixelForValue(point.x);
+                                        const y = scales.y.getPixelForValue(point.y);
+                                        
+                                        // 添加标签背景
+                                        const label = `${dataset.pointType}`;
+                                        const textMetrics = ctx.measureText(label);
+                                        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                                        ctx.fillRect(
+                                            x - textMetrics.width / 2 - 4, 
+                                            y - 10, 
+                                            textMetrics.width + 8, 
+                                            20
+                                        );
+                                        
+                                        // 添加标签文本
+                                        ctx.fillStyle = '#333';
+                                        ctx.fillText(label, x, y);
+                                    });
+                                }
                             });
                             
                             ctx.restore();
                         }
                     };
                     
-                    // 创建新图表
+                    // 创建图表
+                    const ctx = document.getElementById('forceChart').getContext('2d');
                     forceChart = new Chart(ctx, {
                         type: 'scatter',
-                        data: { datasets },
+                        data: {
+                            datasets: datasets
+                        },
                         options: {
                             responsive: true,
-                            maintainAspectRatio: true,
+                            maintainAspectRatio: false,
                             animation: {
-                                duration: 500,
-                                easing: 'easeOutCubic'
+                                duration: 300
                             },
                             scales: {
                                 x: {
@@ -1187,17 +1251,19 @@
                                     position: 'center',
                                     min: -maxRadius,
                                     max: maxRadius,
-                                    ticks: {
-                                        stepSize: Math.ceil(maxRadius / 5),
-                                        precision: 0
-                                    },
                                     grid: {
-                                        color: 'rgba(200, 200, 200, 0.4)',
-                                        lineWidth: 1
+                                        color: 'rgba(220, 220, 220, 0.2)',
+                                        drawOnChartArea: true
+                                    },
+                                    ticks: {
+                                        display: true,
+                                        color: '#888',
+                                        callback: function(value) {
+                                            return value === 0 ? '' : value.toFixed(0);
+                                        }
                                     },
                                     border: {
-                                        color: 'rgba(0, 0, 0, 0.15)',
-                                        lineWidth: 1.5
+                                        display: false
                                     }
                                 },
                                 y: {
@@ -1205,244 +1271,263 @@
                                     position: 'center',
                                     min: -maxRadius,
                                     max: maxRadius,
-                                    ticks: {
-                                        stepSize: Math.ceil(maxRadius / 5),
-                                        precision: 0
-                                    },
                                     grid: {
-                                        color: 'rgba(200, 200, 200, 0.4)',
-                                        lineWidth: 1
+                                        color: 'rgba(220, 220, 220, 0.2)',
+                                        drawOnChartArea: true
+                                    },
+                                    ticks: {
+                                        display: true,
+                                        color: '#888',
+                                        callback: function(value) {
+                                            return value === 0 ? '' : value.toFixed(0);
+                                        }
                                     },
                                     border: {
-                                        color: 'rgba(0, 0, 0, 0.15)',
-                                        lineWidth: 1.5
+                                        display: false
                                     }
                                 }
                             },
                             plugins: {
                                 legend: {
-                                    display: false // 我们使用自定义图例
+                                    display: false
                                 },
                                 tooltip: {
-                                    backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                                    padding: 10,
-                                    titleFont: {
-                                        size: 13,
-                                        weight: 'bold'
-                                    },
-                                    bodyFont: {
-                                        size: 12
+                                    callbacks: {
+                                        title: function(context) {
+                                            const point = context[0];
+                                            return `${point.raw.pointType} - ${point.raw.groupName}`;
+                                        },
+                                        label: function(context) {
+                                            const point = context.raw;
+                                            return [
+                                                `坐标: (${point.x.toFixed(2)}, ${point.y.toFixed(2)})`,
+                                                `大小: ${Math.sqrt(point.x**2 + point.y** 2).toFixed(2)}`,
+                                                `角度: ${cartesianToAngle(point.x, point.y).toFixed(1)}°`
+                                            ];
+                                        }
                                     }
-                                }
+                                },
+                                angleMarkers: angleMarkerPlugin,
+                                pointLabels: pointLabelPlugin
                             },
                             interaction: {
                                 mode: 'nearest',
-                                intersect: false
+                                intersect: false,
+                                axis: 'xy'
+                            },
+                            elements: {
+                                point: {
+                                    hoverRadius: 6
+                                }
                             }
                         },
-                        plugins: [labelPlugin, angleMarkerPlugin]
+                        plugins: [angleMarkerPlugin, pointLabelPlugin]
                     });
                 } catch (error) {
-                    console.error('图表渲染错误:', error);
+                    console.error('图表更新失败:', error);
                     document.getElementById('chartError').classList.remove('hidden');
                 }
             }
             
             // 添加新的数据组
-            function addNewDataGroup(name = null, p1Data = null, p2Data = null) {
-                const newId = dataGroups.length > 0 ? Math.max(...dataGroups.map(g => g.id)) + 1 : 1;
-                const newName = name || `组 ${newId}`;
-                
-                // 选择颜色（循环使用预定义颜色）
+            function addNewDataGroup(name = null, p1 = null, p2 = null) {
+                const newId = dataGroups.length > 0 
+                    ? Math.max(...dataGroups.map(g => g.id)) + 1 
+                    : 1;
+                    
                 const colorIndex = dataGroups.length % groupColors.length;
-                const newColor = groupColors[colorIndex];
-                const newStColor = stColors[colorIndex];
                 
                 const newGroup = {
                     id: newId,
-                    name: newName,
-                    color: newColor,
-                    stColor: newStColor,
-                    p1: p1Data || {
-                        weight: 25.00,
-                        angle: 45.0
-                    },
-                    p2: p2Data || {
-                        weight: 25.00,
-                        angle: 135.0
-                    }
+                    name: name || `组 ${newId}`,
+                    color: groupColors[colorIndex],
+                    stColor: stColors[colorIndex],
+                    p1: p1 || { weight: 20, angle: 45 },
+                    p2: p2 || { weight: 15, angle: 300 }
                 };
                 
                 dataGroups.push(newGroup);
                 currentGroupIndex = dataGroups.length - 1;
                 
                 renderDataGroups();
-                updateChart();
+                throttledUpdateChart();
                 updateResults();
                 updateLegend();
                 
                 return newGroup;
             }
             
-            // 缩放功能实现
-            function updateZoomDisplay() {
-                zoomLevelDisplay.textContent = `${zoomLevel}%`;
-                // 禁用/启用按钮基于当前缩放级别
-                zoomInBtn.disabled = zoomLevel >= maxZoom;
-                zoomOutBtn.disabled = zoomLevel <= minZoom;
-                zoomInBtn.classList.toggle('opacity-50', zoomLevel >= maxZoom);
-                zoomOutBtn.classList.toggle('opacity-50', zoomLevel <= minZoom);
-            }
-            
-            function zoomIn() {
-                if (zoomLevel < maxZoom) {
-                    zoomLevel += zoomStep;
-                    updateZoomDisplay();
-                    updateChart();
-                }
-            }
-            
-            function zoomOut() {
-                if (zoomLevel > minZoom) {
-                    zoomLevel -= zoomStep;
-                    updateZoomDisplay();
-                    updateChart();
-                }
-            }
-            
-            function resetZoom() {
-                zoomLevel = 100;
-                updateZoomDisplay();
-                updateChart();
-            }
-            
-            // 事件监听 - 缩放控制
-            zoomInBtn.addEventListener('click', zoomIn);
-            zoomOutBtn.addEventListener('click', zoomOut);
-            resetZoomBtn.addEventListener('click', resetZoom);
-            
-            // 鼠标滚轮缩放
-            canvas.addEventListener('wheel', function(e) {
-                e.preventDefault();
-                // 滚轮向上是放大，向下是缩小
-                if (e.deltaY < 0) {
-                    zoomIn();
-                } else {
-                    zoomOut();
-                }
-            });
-            
-            // 事件监听 - 新增数据组
-            document.getElementById('addNewGroupBtn').addEventListener('click', function() {
-                addNewDataGroup();
-                
-                // 显示添加成功提示
-                this.textContent = '已添加';
-                setTimeout(() => {
-                    this.innerHTML = '<i class="fa fa-plus mr-1"></i> 新增组';
-                }, 1500);
-            });
-            
-            // 事件监听 - 删除当前数据组
-            document.getElementById('deleteCurrentGroupBtn').addEventListener('click', function() {
+            // 删除当前数据组
+            function deleteCurrentGroup() {
                 if (dataGroups.length <= 1) {
-                    alert('至少需要保留一个数据组');
+                    showNotification('至少保留一个数据组', 'error');
                     return;
                 }
                 
-                if (confirm(`确定要删除当前组 "${dataGroups[currentGroupIndex].name}" 吗？`)) {
-                    dataGroups.splice(currentGroupIndex, 1);
-                    currentGroupIndex = 0; // 切换到第一个组
-                    
-                    renderDataGroups();
-                    updateChart();
-                    updateResults();
-                    updateLegend();
-                }
-            });
+                const deletedGroupName = dataGroups[currentGroupIndex].name;
+                dataGroups.splice(currentGroupIndex, 1);
+                currentGroupIndex = Math.min(currentGroupIndex, dataGroups.length - 1);
+                
+                renderDataGroups();
+                throttledUpdateChart();
+                updateResults();
+                updateLegend();
+                
+                showNotification(`数据组"${deletedGroupName}"已删除`);
+            }
             
-            // 事件监听 - 保存当前数据组到历史记录
-            document.getElementById('saveCurrentGroupBtn').addEventListener('click', function() {
-                const currentGroup = JSON.parse(JSON.stringify(dataGroups[currentGroupIndex]));
-                currentGroup.timestamp = new Date().getTime();
+            // 保存当前组到历史记录
+            function saveCurrentGroup() {
+                const currentGroup = dataGroups[currentGroupIndex];
                 
                 // 检查是否已存在相同数据（避免重复保存）
                 const isDuplicate = savedHistory.some(item => 
                     item.id === currentGroup.id &&
-                    item.p1.weight === currentGroup.p1.weight &&
-                    item.p1.angle === currentGroup.p1.angle &&
-                    item.p2.weight === currentGroup.p2.weight &&
-                    item.p2.angle === currentGroup.p2.angle
+                    Math.abs(item.p1.weight - currentGroup.p1.weight) < 0.01 &&
+                    Math.abs(item.p1.angle - currentGroup.p1.angle) < 0.1 &&
+                    Math.abs(item.p2.weight - currentGroup.p2.weight) < 0.01 &&
+                    Math.abs(item.p2.angle - currentGroup.p2.angle) < 0.1
                 );
                 
                 if (!isDuplicate) {
-                    savedHistory.push(currentGroup);
+                    // 创建带时间戳的副本
+                    const groupToSave = {
+                        ...JSON.parse(JSON.stringify(currentGroup)),
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    savedHistory.push(groupToSave);
                     
                     // 限制历史记录数量为50条
                     if (savedHistory.length > 50) {
                         savedHistory.shift();
                     }
                     
-                    localStorage.setItem('forceVectorSavedHistory', JSON.stringify(savedHistory));
+                    saveToLocalStorage(savedHistory);
                     renderHistoryTable();
                     
-                    // 显示保存成功提示
-                    this.textContent = '已保存';
-                    setTimeout(() => {
-                        this.innerHTML = '<i class="fa fa-save mr-1"></i> 保存当前组';
-                    }, 1500);
+                    showNotification('数据已保存');
                 } else {
-                    alert('该数据已存在于历史记录中');
+                    showNotification('该数据已存在于历史记录中', 'error');
                 }
-            });
+            }
             
-            // 事件监听 - 清空所有历史记录
-            document.getElementById('clearAllHistoryBtn').addEventListener('click', function() {
+            // 保存到本地存储（带错误处理）
+            function saveToLocalStorage(data) {
+                try {
+                    // 检查存储空间
+                    const testKey = '__storage_test__';
+                    localStorage.setItem(testKey, testKey);
+                    localStorage.removeItem(testKey);
+                    
+                    // 保存数据
+                    localStorage.setItem('forceVectorSavedHistory', JSON.stringify(data));
+                    return true;
+                } catch (e) {
+                    // 处理存储已满的情况
+                    if (e.name === 'QuotaExceededError') {
+                        // 尝试清理旧数据
+                        if (data.length > 0) {
+                            const newData = data.slice(-25); // 保留最近25条
+                            localStorage.setItem('forceVectorSavedHistory', JSON.stringify(newData));
+                            savedHistory = newData;
+                            return true;
+                        }
+                    }
+                    console.error('保存失败:', e);
+                    showNotification('存储失败，请清理浏览器存储后重试', 'error');
+                    return false;
+                }
+            }
+            
+            // 清空所有历史记录
+            function clearAllHistory() {
                 if (savedHistory.length === 0) return;
                 
                 if (confirm('确定要清空所有历史记录吗？此操作不可恢复。')) {
                     savedHistory = [];
-                    localStorage.setItem('forceVectorSavedHistory', JSON.stringify(savedHistory));
+                    saveToLocalStorage(savedHistory);
                     renderHistoryTable();
+                    showNotification('所有历史记录已清空');
                 }
+            }
+            
+            // 设置高DPI画布
+            function setupHighDpiCanvas() {
+                const canvas = document.getElementById('forceChart');
+                if (!canvas) return;
+                
+                const dpr = window.devicePixelRatio || 1;
+                const rect = canvas.getBoundingClientRect();
+                
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.scale(dpr, dpr);
+                
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.height}px`;
+            }
+            
+            // 更新缩放显示
+            function updateZoomDisplay() {
+                document.getElementById('zoomLevel').textContent = `${zoomLevel}%`;
+                document.getElementById('zoomOutBtn').disabled = zoomLevel <= minZoom;
+                document.getElementById('zoomInBtn').disabled = zoomLevel >= maxZoom;
+            }
+            
+            // 事件监听 - 添加新数据组
+            document.getElementById('addNewGroupBtn').addEventListener('click', function() {
+                addNewDataGroup();
+                showNotification('已添加新数据组');
             });
+            
+            // 事件监听 - 删除当前数据组
+            document.getElementById('deleteCurrentGroupBtn').addEventListener('click', deleteCurrentGroup);
+            
+            // 事件监听 - 保存当前组到历史记录
+            document.getElementById('saveCurrentGroupBtn').addEventListener('click', saveCurrentGroup);
+            
+            // 事件监听 - 清空所有历史记录
+            document.getElementById('clearAllHistoryBtn').addEventListener('click', clearAllHistory);
             
             // 事件监听 - 显示控制选项
             document.getElementById('showAllGroups').addEventListener('change', function() {
                 displayOptions.showAllGroups = this.checked;
-                updateChart();
+                throttledUpdateChart();
             });
             
             document.getElementById('showP1').addEventListener('change', function() {
                 displayOptions.showP1 = this.checked;
-                updateChart();
+                throttledUpdateChart();
             });
             
             document.getElementById('showP2').addEventListener('change', function() {
                 displayOptions.showP2 = this.checked;
-                updateChart();
+                throttledUpdateChart();
             });
             
             document.getElementById('showResultant').addEventListener('change', function() {
                 displayOptions.showResultant = this.checked;
-                updateChart();
+                throttledUpdateChart();
             });
             
             document.getElementById('showVectors').addEventListener('change', function() {
                 displayOptions.showVectors = this.checked;
-                updateChart();
+                throttledUpdateChart();
             });
             
             // 标签显示控制
             document.getElementById('showLabels').addEventListener('change', function() {
                 displayOptions.showLabels = this.checked;
-                updateChart();
+                throttledUpdateChart();
             });
             
             // 角度标记显示控制
             document.getElementById('showAngleMarkers').addEventListener('change', function() {
                 displayOptions.showAngleMarkers = this.checked;
-                updateChart();
+                throttledUpdateChart();
             });
             
             // 事件监听 - P1重量滑块（使用0.01步长）
@@ -1450,7 +1535,7 @@
                 dataGroups[currentGroupIndex].p1.weight = parseFloat(this.value);
                 document.getElementById('p1WeightValue').textContent = dataGroups[currentGroupIndex].p1.weight.toFixed(2);
                 document.getElementById('p1WeightInput').value = dataGroups[currentGroupIndex].p1.weight;
-                updateChart();
+                throttledUpdateChart();
                 updateResults();
             });
             
@@ -1459,38 +1544,42 @@
                 dataGroups[currentGroupIndex].p1.angle = parseFloat(this.value);
                 document.getElementById('p1AngleValue').textContent = dataGroups[currentGroupIndex].p1.angle.toFixed(1) + '°';
                 document.getElementById('p1AngleInput').value = dataGroups[currentGroupIndex].p1.angle;
-                updateChart();
+                throttledUpdateChart();
                 updateResults();
             });
             
-            // 事件监听 - P1重量输入框（使用0.01步长）
+            // 事件监听 - P1重量输入框
             document.getElementById('p1WeightInput').addEventListener('change', function() {
-                let value = parseFloat(this.value);
-                value = Math.min(Math.max(value, 0.01), 50);
-                dataGroups[currentGroupIndex].p1.weight = value;
-                document.getElementById('p1WeightValue').textContent = value.toFixed(2);
-                document.getElementById('p1Weight').value = value;
-                updateChart();
-                updateResults();
+                const value = parseFloat(this.value);
+                if (!isNaN(value) && value >= 0) {
+                    dataGroups[currentGroupIndex].p1.weight = value;
+                    document.getElementById('p1Weight').value = value;
+                    document.getElementById('p1WeightValue').textContent = value.toFixed(2);
+                    throttledUpdateChart();
+                    updateResults();
+                }
             });
             
             // 事件监听 - P1角度输入框
             document.getElementById('p1AngleInput').addEventListener('change', function() {
                 let value = parseFloat(this.value);
-                value = Math.min(Math.max(value, 0), 360);
-                dataGroups[currentGroupIndex].p1.angle = value;
-                document.getElementById('p1AngleValue').textContent = value.toFixed(1) + '°';
-                document.getElementById('p1Angle').value = value;
-                updateChart();
-                updateResults();
+                if (!isNaN(value)) {
+                    // 确保角度在0-360之间
+                    value = ((value % 360) + 360) % 360;
+                    dataGroups[currentGroupIndex].p1.angle = value;
+                    document.getElementById('p1Angle').value = value;
+                    document.getElementById('p1AngleValue').textContent = value.toFixed(1) + '°';
+                    throttledUpdateChart();
+                    updateResults();
+                }
             });
             
-            // 事件监听 - P2重量滑块（使用0.01步长）
+            // 事件监听 - P2重量滑块
             document.getElementById('p2Weight').addEventListener('input', function() {
                 dataGroups[currentGroupIndex].p2.weight = parseFloat(this.value);
                 document.getElementById('p2WeightValue').textContent = dataGroups[currentGroupIndex].p2.weight.toFixed(2);
                 document.getElementById('p2WeightInput').value = dataGroups[currentGroupIndex].p2.weight;
-                updateChart();
+                throttledUpdateChart();
                 updateResults();
             });
             
@@ -1499,52 +1588,82 @@
                 dataGroups[currentGroupIndex].p2.angle = parseFloat(this.value);
                 document.getElementById('p2AngleValue').textContent = dataGroups[currentGroupIndex].p2.angle.toFixed(1) + '°';
                 document.getElementById('p2AngleInput').value = dataGroups[currentGroupIndex].p2.angle;
-                updateChart();
+                throttledUpdateChart();
                 updateResults();
             });
             
-            // 事件监听 - P2重量输入框（使用0.01步长）
+            // 事件监听 - P2重量输入框
             document.getElementById('p2WeightInput').addEventListener('change', function() {
-                let value = parseFloat(this.value);
-                value = Math.min(Math.max(value, 0.01), 50);
-                dataGroups[currentGroupIndex].p2.weight = value;
-                document.getElementById('p2WeightValue').textContent = value.toFixed(2);
-                document.getElementById('p2Weight').value = value;
-                updateChart();
-                updateResults();
+                const value = parseFloat(this.value);
+                if (!isNaN(value) && value >= 0) {
+                    dataGroups[currentGroupIndex].p2.weight = value;
+                    document.getElementById('p2Weight').value = value;
+                    document.getElementById('p2WeightValue').textContent = value.toFixed(2);
+                    throttledUpdateChart();
+                    updateResults();
+                }
             });
             
             // 事件监听 - P2角度输入框
             document.getElementById('p2AngleInput').addEventListener('change', function() {
                 let value = parseFloat(this.value);
-                value = Math.min(Math.max(value, 0), 360);
-                dataGroups[currentGroupIndex].p2.angle = value;
-                document.getElementById('p2AngleValue').textContent = value.toFixed(1) + '°';
-                document.getElementById('p2Angle').value = value;
-                updateChart();
-                updateResults();
+                if (!isNaN(value)) {
+                    // 确保角度在0-360之间
+                    value = ((value % 360) + 360) % 360;
+                    dataGroups[currentGroupIndex].p2.angle = value;
+                    document.getElementById('p2Angle').value = value;
+                    document.getElementById('p2AngleValue').textContent = value.toFixed(1) + '°';
+                    throttledUpdateChart();
+                    updateResults();
+                }
             });
             
             // 事件监听 - 阈值滑块
             document.getElementById('thresholdSlider').addEventListener('input', function() {
-                weightThreshold = parseFloat(this.value);
-                document.getElementById('thresholdValue').textContent = weightThreshold.toFixed(2);
-                document.getElementById('thresholdInput').value = weightThreshold;
-                updateChart();
+                const value = parseFloat(this.value);
+                weightThreshold = value;
+                document.getElementById('thresholdValue').textContent = value.toFixed(2);
+                document.getElementById('thresholdInput').value = value;
+                throttledUpdateChart();
                 updateResults();
                 updateLegend();
             });
             
             // 事件监听 - 阈值输入框
             document.getElementById('thresholdInput').addEventListener('change', function() {
-                let value = parseFloat(this.value);
-                value = Math.min(Math.max(value, 0.01), 50);
-                weightThreshold = value;
-                document.getElementById('thresholdValue').textContent = value.toFixed(2);
-                document.getElementById('thresholdSlider').value = value;
-                updateChart();
-                updateResults();
-                updateLegend();
+                const value = parseFloat(this.value);
+                if (!isNaN(value) && value >= 0) {
+                    weightThreshold = value;
+                    document.getElementById('thresholdValue').textContent = value.toFixed(2);
+                    document.getElementById('thresholdSlider').value = value;
+                    throttledUpdateChart();
+                    updateResults();
+                    updateLegend();
+                }
+            });
+            
+            // 缩放控制
+            document.getElementById('zoomInBtn').addEventListener('click', function() {
+                if (zoomLevel < maxZoom) {
+                    zoomLevel += zoomStep;
+                    updateZoomDisplay();
+                    throttledUpdateChart();
+                }
+            });
+            
+            document.getElementById('zoomOutBtn').addEventListener('click', function() {
+                if (zoomLevel > minZoom) {
+                    zoomLevel -= zoomStep;
+                    updateZoomDisplay();
+                    throttledUpdateChart();
+                }
+            });
+            
+            document.getElementById('resetZoomBtn').addEventListener('click', function() {
+                zoomLevel = 100;
+                updateZoomDisplay();
+                throttledUpdateChart();
+                showNotification('缩放已重置');
             });
             
             // 设置滑块样式
@@ -1558,6 +1677,7 @@
                 }
                 .zoom-btn:disabled {
                     cursor: not-allowed;
+                    opacity: 0.5;
                 }
             `;
             document.head.appendChild(style);
@@ -1566,7 +1686,7 @@
             renderDataGroups();
             updateResults();
             updateZoomDisplay();
-            updateChart();
+            throttledUpdateChart();
             updateLegend();
             renderHistoryTable();
         });
