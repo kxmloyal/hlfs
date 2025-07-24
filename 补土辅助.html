@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多组力向量可视化工具 - 同一圆上呈现</title>
+   <script src="tailwindcss.min.js"></script>
+   <link href="font-awesome.min.css" rel="stylesheet">
+   <script src="chart.umd.min.js"></script>
+    
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',    // 默认P1点颜色
+                        secondary: '#EC4899',  // 默认P2点颜色
+                        resultant: '#10B981',  // 默认合力点(ST点)颜色
+                        warning: '#EF4444',
+                        dark: '#1E293B',
+                        light: '#F8FAFC'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .vector-shadow {
+                filter: drop-shadow(0 4px 3px rgb(0 0 0 / 0.07)) drop-shadow(0 2px 2px rgb(0 0 0 / 0.06));
+            }
+            .warning-pulse {
+                animation: pulse 2s infinite;
+            }
+            @keyframes pulse {
+                0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+                70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+            }
+            .circle-container {
+                position: relative;
+                width: 100%;
+                max-width: 800px;
+                margin: 0 auto;
+            }
+            .circle-wrapper {
+                position: relative;
+                width: 100%;
+                padding-top: 100%; /* 1:1 宽高比 */
+            }
+            .circle-canvas {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100% !important;
+                height: 100% !important;
+                image-rendering: -webkit-optimize-contrast;
+                image-rendering: crisp-edges;
+            }
+            .slider-track {
+                height: 6px;
+                @apply rounded-full bg-gray-200;
+            }
+            .slider-thumb {
+                @apply appearance-none w-5 h-5 rounded-full cursor-pointer;
+            }
+            input[type=range]::-webkit-slider-thumb {
+                @apply slider-thumb;
+            }
+            input[type=range]::-moz-range-thumb {
+                @apply slider-thumb;
+            }
+            .stat-card {
+                transition: all 0.3s ease;
+            }
+            .stat-card:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            }
+            .history-item {
+                transition: all 0.2s ease;
+            }
+            .history-item:hover {
+                background-color: rgba(59, 130, 246, 0.05);
+            }
+            .data-group-item {
+                transition: all 0.2s ease;
+            }
+            .data-group-item.active {
+                border-color: theme('colors.primary');
+                background-color: rgba(59, 130, 246, 0.05);
+            }
+            .group-color-indicator {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                display: inline-block;
+                margin-right: 5px;
+            }
+            .st-color-indicator {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                display: inline-block;
+                margin-right: 5px;
+                background-color: var(--resultant-color, #10B981);
+            }
+            .zoom-controls {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                z-index: 10;
+                background: white;
+                border-radius: 4px;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+                display: flex;
+                overflow: hidden;
+            }
+            .zoom-btn {
+                width: 30px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: none;
+                background: none;
+                cursor: pointer;
+                transition: background-color 0.2s;
+            }
+            .zoom-btn:hover {
+                background-color: rgba(59, 130, 246, 0.1);
+            }
+            .zoom-btn:active {
+                background-color: rgba(59, 130, 246, 0.2);
+            }
+            .zoom-level {
+                width: 40px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
+                border-left: 1px solid rgba(0, 0, 0, 0.1);
+                border-right: 1px solid rgba(0, 0, 0, 0.1);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-light to-gray-100 min-h-screen font-sans text-dark">
+    <header class="container mx-auto px-4 py-6">
+        <h1 class="text-[clamp(1.6rem,3vw,2.2rem)] font-bold text-center text-dark mb-2">多组力向量可视化工具</h1>
+        <p class="text-center text-gray-600 max-w-2xl mx-auto">多组数据在同一圆上呈现，每组包含两点(P1, P2)及合力点(ST点)，各组数据独立计算</p>
+    </header>
+
+    <main class="container mx-auto px-4 py-6">
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <!-- 主要内容区域 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- 左侧控制面板 -->
+                <div class="lg:col-span-1">
+                    <!-- 数据组控制 -->
+                    <div class="mb-6">
+                        <div class="flex justify-between items-center mb-3">
+                            <h2 class="text-xl font-semibold flex items-center">
+                                <i class="fa fa-database text-primary mr-2"></i>数据组
+                            </h2>
+                            <button id="addNewGroupBtn" class="bg-primary hover:bg-primary/90 text-white px-3 py-1.5 rounded-md text-sm flex items-center transition-colors">
+                                <i class="fa fa-plus mr-1"></i> 新增组
+                            </button>
+                        </div>
+                        
+                        <div id="dataGroupsContainer" class="max-h-40 overflow-y-auto bg-gray-50 rounded-lg border border-gray-200 p-2 mb-3">
+                            <!-- 数据组列表将通过JS动态生成 -->
+                        </div>
+                        
+                        <div class="flex justify-between">
+                            <button id="deleteCurrentGroupBtn" class="text-sm text-gray-500 hover:text-warning transition-colors px-3 py-1.5 rounded-md border border-gray-200">
+                                <i class="fa fa-trash-o mr-1"></i> 删除当前组
+                            </button>
+                            <button id="saveCurrentGroupBtn" class="bg-primary/90 hover:bg-primary text-white px-3 py-1.5 rounded-md text-sm flex items-center transition-colors">
+                                <i class="fa fa-save mr-1"></i> 保存当前组
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 显示/隐藏控制 -->
+                    <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-700 mb-3 flex items-center">
+                            <i class="fa fa-eye mr-2"></i>显示控制
+                        </h3>
+                        
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" id="showAllGroups" checked class="form-checkbox h-4 w-4 text-primary">
+                                <span class="ml-2 text-sm">显示所有数据组</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="showP1" checked class="form-checkbox h-4 w-4 text-primary">
+                                <span class="ml-2 text-sm">显示P1点</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="showP2" checked class="form-checkbox h-4 w-4 text-primary">
+                                <span class="ml-2 text-sm">显示P2点</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="showResultant" checked class="form-checkbox h-4 w-4 text-primary">
+                                <span class="ml-2 text-sm">显示合力点(ST点)</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="showVectors" checked class="form-checkbox h-4 w-4 text-primary">
+                                <span class="ml-2 text-sm">显示向量线</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="showLabels" checked class="form-checkbox h-4 w-4 text-primary">
+                                <span class="ml-2 text-sm">显示点标签 (P1/P2/ST)</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="showAngleMarkers" checked class="form-checkbox h-4 w-4 text-primary">
+                                <span class="ml-2 text-sm">显示角度标记 (0°-360°)</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- 当前组数据控制 -->
+                    <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                        <h3 class="text-lg font-medium text-primary mb-3 flex items-center">
+                            <span class="group-color-indicator" id="currentGroupColorIndicator"></span>
+                            <span id="currentGroupTitle">点 P1 (当前组)</span>
+                        </h3>
+                        
+                        <div class="space-y-4">
+                            <!-- P1 重量控制 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    P1 重量: <span id="p1WeightValue" class="font-semibold">35.75</span>
+                                    <span id="p1Warning" class="hidden ml-2 text-xs text-warning">
+                                        <i class="fa fa-exclamation-circle"></i> 超出阈值
+                                    </span>
+                                </label>
+                                <input 
+                                    type="range" 
+                                    id="p1Weight" 
+                                    min="0.01" 
+                                    max="50" 
+                                    step="0.01" 
+                                    value="35.75"
+                                    class="w-full slider-track"
+                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
+                                >
+                            </div>
+                            
+                            <!-- P1 角度控制 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    P1 角度: <span id="p1AngleValue" class="font-semibold">310.3°</span>
+                                </label>
+                                <input 
+                                    type="range" 
+                                    id="p1Angle" 
+                                    min="0" 
+                                    max="360" 
+                                    step="0.1" 
+                                    value="310.3"
+                                    class="w-full slider-track"
+                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
+                                >
+                            </div>
+                            
+                            <!-- P2 重量控制 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    P2 重量: <span id="p2WeightValue" class="font-semibold">11.98</span>
+                                    <span id="p2Warning" class="hidden ml-2 text-xs text-warning">
+                                        <i class="fa fa-exclamation-circle"></i> 超出阈值
+                                    </span>
+                                </label>
+                                <input 
+                                    type="range" 
+                                    id="p2Weight" 
+                                    min="0.01" 
+                                    max="50" 
+                                    step="0.01" 
+                                    value="11.98"
+                                    class="w-full slider-track"
+                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
+                                >
+                            </div>
+                            
+                            <!-- P2 角度控制 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    P2 角度: <span id="p2AngleValue" class="font-semibold">50.1°</span>
+                                </label>
+                                <input 
+                                    type="range" 
+                                    id="p2Angle" 
+                                    min="0" 
+                                    max="360" 
+                                    step="0.1" 
+                                    value="50.1"
+                                    class="w-full slider-track"
+                                    style="--slider-thumb-color: var(--current-group-color, #3B82F6)"
+                                >
+                            </div>
+                            
+                            <!-- 数值输入框 -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-1">P1 精确重量</label>
+                                    <input type="number" id="p1WeightInput" min="0.01" max="50" step="0.01" value="35.75"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-1">P1 精确角度</label>
+                                    <input type="number" id="p1AngleInput" min="0" max="360" step="0.1" value="310.3"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-1">P2 精确重量</label>
+                                    <input type="number" id="p2WeightInput" min="0.01" max="50" step="0.01" value="11.98"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-1">P2 精确角度</label>
+                                    <input type="number" id="p2AngleInput" min="0" max="360" step="0.1" value="50.1"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 重量阈值设置 -->
+                    <div class="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-100">
+                        <h3 class="text-lg font-medium text-warning mb-3 flex items-center">
+                            <i class="fa fa-exclamation-triangle mr-2"></i>重量阈值设置
+                        </h3>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    阈值: <span id="thresholdValue" class="font-semibold">30</span>
+                                </label>
+                                <input 
+                                    type="range" 
+                                    id="thresholdSlider" 
+                                    min="0.01" 
+                                    max="50" 
+                                    step="0.01" 
+                                    value="30"
+                                    class="w-full slider-track"
+                                    style="--slider-thumb-color: theme('colors.warning')"
+                                >
+                            </div>
+                            
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1">精确输入阈值</label>
+                                <input type="number" id="thresholdInput" min="0.01" max="50" step="0.01" value="30"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-warning/50">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 右侧图表和结果 -->
+                <div class="lg:col-span-2">
+                    <!-- 图表容器 -->
+                    <div class="mb-8">
+                        <h2 class="text-xl font-semibold mb-4 flex items-center">
+                            <i class="fa fa-area-chart text-primary mr-2"></i>多组力向量可视化
+                            <span id="currentGroupName" class="ml-2 text-sm font-normal text-gray-500">（当前编辑：组 1）</span>
+                        </h2>
+                        <div class="circle-container border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                            <div class="circle-wrapper">
+                                <canvas id="forceChart" class="circle-canvas"></canvas>
+                                <div id="chartError" class="chart-error hidden absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                                    <p class="text-warning"><i class="fa fa-exclamation-circle mr-2"></i>图表加载失败</p>
+                                </div>
+                                <!-- 缩放控制按钮 -->
+                                <div class="zoom-controls">
+                                    <button id="zoomOutBtn" class="zoom-btn">
+                                        <i class="fa fa-minus text-gray-600"></i>
+                                    </button>
+                                    <div id="zoomLevel" class="zoom-level">100%</div>
+                                    <button id="zoomInBtn" class="zoom-btn">
+                                        <i class="fa fa-plus text-gray-600"></i>
+                                    </button>
+                                    <button id="resetZoomBtn" class="zoom-btn">
+                                        <i class="fa fa-refresh text-gray-600"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 图例说明 -->
+                        <div class="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <h3 class="text-sm font-medium text-gray-700 mb-2">图例说明</h3>
+                            <div id="legendContainer" class="flex flex-wrap gap-3 text-sm">
+                                <!-- 图例将通过JS动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 结果数据 -->
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4 flex items-center">
+                            <i class="fa fa-calculator text-primary mr-2"></i>当前组计算结果
+                        </h2>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <!-- P1 结果 -->
+                            <div class="stat-card bg-white p-4 rounded-lg shadow-sm border border-primary/20">
+                                <h3 class="font-medium text-primary mb-2">点 P1</h3>
+                                <p class="text-sm text-gray-600">重量: <span id="p1WeightResult" class="font-semibold">35.75</span></p>
+                                <p class="text-sm text-gray-600">角度: <span id="p1AngleResult" class="font-semibold">310.3°</span></p>
+                                <p class="text-sm text-gray-600 mt-1">X坐标: <span id="p1XResult" class="font-semibold">0.00</span></p>
+                                <p class="text-sm text-gray-600">Y坐标: <span id="p1YResult" class="font-semibold">0.00</span></p>
+                                <p class="text-sm text-gray-600 mt-1">象限: <span id="p1Quadrant" class="font-semibold">第四象限</span></p>
+                            </div>
+                            
+                            <!-- P2 结果 -->
+                            <div class="stat-card bg-white p-4 rounded-lg shadow-sm border border-secondary/20">
+                                <h3 class="font-medium text-secondary mb-2">点 P2</h3>
+                                <p class="text-sm text-gray-600">重量: <span id="p2WeightResult" class="font-semibold">11.98</span></p>
+                                <p class="text-sm text-gray-600">角度: <span id="p2AngleResult" class="font-semibold">50.1°</span></p>
+                                <p class="text-sm text-gray-600 mt-1">X坐标: <span id="p2XResult" class="font-semibold">0.00</span></p>
+                                <p class="text-sm text-gray-600">Y坐标: <span id="p2YResult" class="font-semibold">0.00</span></p>
+                                <p class="text-sm text-gray-600 mt-1">象限: <span id="p2Quadrant" class="font-semibold">第一象限</span></p>
+                            </div>
+                            
+                            <!-- 合力点(ST点)结果 -->
+                            <div class="stat-card bg-white p-4 rounded-lg shadow-sm border border-resultant/20">
+                                <h3 class="font-medium text-resultant mb-2">合力点(ST点)</h3>
+                                <p class="text-sm text-gray-600">大小: <span id="resultantMagnitude" class="font-semibold">0.00</span></p>
+                                <p class="text-sm text-gray-600">角度: <span id="resultantAngle" class="font-semibold">0.0°</span></p>
+                                <p class="text-sm text-gray-600 mt-1">X坐标: <span id="resultantX" class="font-semibold">0.00</span></p>
+                                <p class="text-sm text-gray-600">Y坐标: <span id="resultantY" class="font-semibold">0.00</span></p>
+                                <p class="text-sm text-gray-600 mt-1">象限: <span id="resultantQuadrant" class="font-semibold">第一象限</span></p>
+                            </div>
+                        </div>
+                        
+                        <!-- 历史数据 -->
+                        <div class="mt-8">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="text-xl font-semibold flex items-center">
+                                    <i class="fa fa-history text-primary mr-2"></i>历史数据记录
+                                </h3>
+                                <button id="clearAllHistoryBtn" class="text-sm text-gray-500 hover:text-warning transition-colors">
+                                    <i class="fa fa-trash-o"></i> 清空所有记录
+                                </button>
+                            </div>
+                            
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full bg-white border border-gray-200 rounded-lg">
+                                    <thead>
+                                        <tr class="bg-gray-50">
+                                            <th class="py-2 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">数据组</th>
+                                            <th class="py-2 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">P1重量</th>
+                                            <th class="py-2 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">P1角度</th>
+                                            <th class="py-2 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">P2重量</th>
+                                            <th class="py-2 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">P2角度</th>
+                                            <th class="py-2 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ST大小</th>
+                                            <th class="py-2 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ST角度</th>
+                                            <th class="py-2 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">保存时间</th>
+                                            <th class="py-2 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="historyTableBody" class="divide-y divide-gray-200">
+                                        <!-- 历史数据将通过JS动态生成 -->
+                                        <tr>
+                                            <td colspan="9" class="py-4 px-4 text-center text-sm text-gray-500 italic">暂无保存的数据</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-dark text-white py-4 mt-12">
+        <div class="container mx-auto px-4 text-center text-sm">
+            <p>多组力向量可视化工具 &copy; 2023</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 检查Chart.js是否加载成功
+            if (typeof Chart === 'undefined') {
+                console.error('Chart.js未加载成功');
+                document.getElementById('chartError').classList.remove('hidden');
+                return;
+            }
+            
+            // 预定义一组区分度高的颜色，用于不同数据组
+            const groupColors = [
+                '#3B82F6', '#EC4899', '#10B981', '#F59E0B', 
+                '#6366F1', '#8B5CF6', '#EC4899', '#14B8A6',
+                '#F43F5E', '#84CC16', '#0EA5E9', '#A855F7'
+            ];
+            
+            // 为每组数据定义独特的ST点颜色
+            const stColors = [
+                '#065F46', '#92400E', '#7C2D12', '#4C1D95',
+                '#0369A1', '#7E22CE', '#1E40AF', '#0F766E',
+                '#854D27', '#334155', '#6B7280', '#0284C7'
+            ];
+            
+            // 初始化数据组 - 每组数据独立计算合力，在同一圆上显示
+            let dataGroups = [
+                {
+                    id: 1,
+                    name: '组 1',
+                    color: groupColors[0],
+                    stColor: stColors[0],
+                    p1: {
+                        weight: 35.75,
+                        angle: 310.3
+                    },
+                    p2: {
+                        weight: 11.98,
+                        angle: 50.1
+                    }
+                }
+            ];
+            
+            // 当前激活的数据组索引
+            let currentGroupIndex = 0;
+            
+            // 阈值设置
+            let weightThreshold = 30;
+            
+            // 显示控制选项
+            let displayOptions = {
+                showAllGroups: true,
+                showP1: true,
+                showP2: true,
+                showResultant: true,
+                showVectors: true,
+                showLabels: true,  // 控制标签显示
+                showAngleMarkers: true  // 控制角度标记显示
+            };
+            
+            // 历史记录 - 保存所有已保存的数据组
+            let savedHistory = JSON.parse(localStorage.getItem('forceVectorSavedHistory')) || [];
+            
+            // 缩放相关变量
+            let zoomLevel = 100; // 百分比
+            const minZoom = 50;  // 最小缩放百分比
+            const maxZoom = 300; // 最大缩放百分比
+            const zoomStep = 10; // 每次缩放步长
+            
+            // 获取DOM元素
+            const canvas = document.getElementById('forceChart');
+            const ctx = canvas.getContext('2d');
+            const zoomInBtn = document.getElementById('zoomInBtn');
+            const zoomOutBtn = document.getElementById('zoomOutBtn');
+            const resetZoomBtn = document.getElementById('resetZoomBtn');
+            const zoomLevelDisplay = document.getElementById('zoomLevel');
+            
+            // 检查Canvas是否可用
+            if (!canvas || !ctx) {
+                console.error('无法初始化Canvas');
+                document.getElementById('chartError').classList.remove('hidden');
+                return;
+            }
+            
+            // 高DPI支持
+            function setupHighDpiCanvas() {
+                const dpr = window.devicePixelRatio || 1;
+                const rect = canvas.getBoundingClientRect();
+                
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                ctx.scale(dpr, dpr);
+                
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.height}px`;
+            }
+            
+            // 初始化高DPI
+            setupHighDpiCanvas();
+            window.addEventListener('resize', setupHighDpiCanvas);
+            
+            // 极坐标转直角坐标
+            function polarToCartesian(weight, angleDeg) {
+                const angleRad = (angleDeg * Math.PI) / 180;
+                return {
+                    x: weight * Math.cos(angleRad),
+                    y: weight * Math.sin(angleRad)
+                };
+            }
+            
+            // 直角坐标转角度
+            function cartesianToAngle(x, y) {
+                let angle = Math.atan2(y, x) * 180 / Math.PI;
+                return angle < 0 ? angle + 360 : angle;
+            }
+            
+            // 确定象限
+            function getQuadrant(x, y) {
+                if (x > 0 && y > 0) return "第一象限";
+                if (x < 0 && y > 0) return "第二象限";
+                if (x < 0 && y < 0) return "第三象限";
+                if (x > 0 && y < 0) return "第四象限";
+                return "坐标轴上";
+            }
+            
+            // 创建圆形点集
+            function createCirclePoints(radius) {
+                const points = [];
+                for (let i = 0; i <= 360; i += 0.5) {
+                    const rad = (i * Math.PI) / 180;
+                    points.push({
+                        x: radius * Math.cos(rad),
+                        y: radius * Math.sin(rad)
+                    });
+                }
+                return points;
+            }
+            
+            // 计算合力(ST点)
+            function calculateResultant(groupData) {
+                const p1Cartesian = polarToCartesian(groupData.p1.weight, groupData.p1.angle);
+                const p2Cartesian = polarToCartesian(groupData.p2.weight, groupData.p2.angle);
+                
+                const resultantX = p1Cartesian.x + p2Cartesian.x;
+                const resultantY = p1Cartesian.y + p2Cartesian.y;
+                
+                return {
+                    x: resultantX,
+                    y: resultantY,
+                    magnitude: Math.sqrt(resultantX * resultantX + resultantY * resultantY),
+                    angle: cartesianToAngle(resultantX, resultantY)
+                };
+            }
+            
+            // 更新当前组结果显示
+            function updateResults() {
+                const currentGroup = dataGroups[currentGroupIndex];
+                const p1Cartesian = polarToCartesian(currentGroup.p1.weight, currentGroup.p1.angle);
+                const p2Cartesian = polarToCartesian(currentGroup.p2.weight, currentGroup.p2.angle);
+                const resultant = calculateResultant(currentGroup);
+                
+                // 更新P1结果（保留两位小数精度）
+                document.getElementById('p1WeightResult').textContent = currentGroup.p1.weight.toFixed(2);
+                document.getElementById('p1AngleResult').textContent = currentGroup.p1.angle.toFixed(1) + '°';
+                document.getElementById('p1XResult').textContent = p1Cartesian.x.toFixed(2);
+                document.getElementById('p1YResult').textContent = p1Cartesian.y.toFixed(2);
+                document.getElementById('p1Quadrant').textContent = getQuadrant(p1Cartesian.x, p1Cartesian.y);
+                
+                // 更新P2结果（保留两位小数精度）
+                document.getElementById('p2WeightResult').textContent = currentGroup.p2.weight.toFixed(2);
+                document.getElementById('p2AngleResult').textContent = currentGroup.p2.angle.toFixed(1) + '°';
+                document.getElementById('p2XResult').textContent = p2Cartesian.x.toFixed(2);
+                document.getElementById('p2YResult').textContent = p2Cartesian.y.toFixed(2);
+                document.getElementById('p2Quadrant').textContent = getQuadrant(p2Cartesian.x, p2Cartesian.y);
+                
+                // 更新合力点(ST点)结果（保留两位小数精度）
+                document.getElementById('resultantMagnitude').textContent = resultant.magnitude.toFixed(2);
+                document.getElementById('resultantAngle').textContent = resultant.angle.toFixed(1) + '°';
+                document.getElementById('resultantX').textContent = resultant.x.toFixed(2);
+                document.getElementById('resultantY').textContent = resultant.y.toFixed(2);
+                document.getElementById('resultantQuadrant').textContent = getQuadrant(resultant.x, resultant.y);
+                
+                // 检查是否超过阈值
+                const p1Over = currentGroup.p1.weight > weightThreshold;
+                const p2Over = currentGroup.p2.weight > weightThreshold;
+                
+                document.getElementById('p1Warning').classList.toggle('hidden', !p1Over);
+                document.getElementById('p2Warning').classList.toggle('hidden', !p2Over);
+                
+                // 更新滑块和输入框（使用0.01精度）
+                document.getElementById('p1Weight').value = currentGroup.p1.weight;
+                document.getElementById('p1Angle').value = currentGroup.p1.angle;
+                document.getElementById('p1WeightInput').value = currentGroup.p1.weight;
+                document.getElementById('p1AngleInput').value = currentGroup.p1.angle;
+                document.getElementById('p1WeightValue').textContent = currentGroup.p1.weight.toFixed(2);
+                document.getElementById('p1AngleValue').textContent = currentGroup.p1.angle.toFixed(1) + '°';
+                
+                document.getElementById('p2Weight').value = currentGroup.p2.weight;
+                document.getElementById('p2Angle').value = currentGroup.p2.angle;
+                document.getElementById('p2WeightInput').value = currentGroup.p2.weight;
+                document.getElementById('p2AngleInput').value = currentGroup.p2.angle;
+                document.getElementById('p2WeightValue').textContent = currentGroup.p2.weight.toFixed(2);
+                document.getElementById('p2AngleValue').textContent = currentGroup.p2.angle.toFixed(1) + '°';
+                
+                // 更新当前组名称显示
+                document.getElementById('currentGroupName').textContent = `（当前编辑：${currentGroup.name}）`;
+                document.getElementById('currentGroupTitle').textContent = `${currentGroup.name}`;
+                document.getElementById('currentGroupColorIndicator').style.backgroundColor = currentGroup.color;
+                
+                // 设置当前组颜色变量，用于滑块样式
+                document.documentElement.style.setProperty('--current-group-color', currentGroup.color);
+                document.documentElement.style.setProperty('--resultant-color', currentGroup.stColor);
+            }
+            
+            // 渲染数据组列表
+            function renderDataGroups() {
+                const container = document.getElementById('dataGroupsContainer');
+                container.innerHTML = '';
+                
+                if (dataGroups.length === 0) {
+                    container.innerHTML = '<p class="text-sm text-gray-500 text-center italic">暂无数据组</p>';
+                    return;
+                }
+                
+                dataGroups.forEach((group, index) => {
+                    const groupItem = document.createElement('div');
+                    groupItem.className = `data-group-item p-2 mb-1 rounded border border-gray-200 flex justify-between items-center ${index === currentGroupIndex ? 'active' : ''}`;
+                    groupItem.innerHTML = `
+                        <div class="flex items-center">
+                            <span class="group-color-indicator mr-2" style="background-color: ${group.color}"></span>
+                            <span class="text-sm">${group.name}</span>
+                            <span class="ml-2 text-xs text-gray-500">(ST:</span>
+                            <span class="st-color-indicator ml-1" style="background-color: ${group.stColor}"></span>
+                            <span class="text-xs text-gray-500">)</span>
+                        </div>
+                        <div>
+                            <button data-index="${index}" class="rename-group text-gray-500 hover:text-primary text-xs mr-1">
+                                <i class="fa fa-pencil"></i>
+                            </button>
+                        </div>
+                    `;
+                    container.appendChild(groupItem);
+                    
+                    // 点击切换数据组
+                    groupItem.addEventListener('click', function(e) {
+                        if (!e.target.closest('.rename-group')) {
+                            currentGroupIndex = index;
+                            renderDataGroups();
+                            updateChart();
+                            updateResults();
+                            updateLegend();
+                        }
+                    });
+                    
+                    // 重命名数据组
+                    groupItem.querySelector('.rename-group').addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const newName = prompt('请输入新的组名称:', group.name);
+                        if (newName && newName.trim() !== '') {
+                            dataGroups[index].name = newName.trim();
+                            renderDataGroups();
+                            updateResults();
+                            updateLegend();
+                        }
+                    });
+                });
+            }
+            
+            // 更新图例
+            function updateLegend() {
+                const container = document.getElementById('legendContainer');
+                container.innerHTML = '';
+                
+                // 添加通用图例
+                const thresholdItem = document.createElement('div');
+                thresholdItem.className = 'flex items-center';
+                thresholdItem.innerHTML = `
+                    <span class="group-color-indicator mr-1" style="background-color: transparent; border: 1.5px dashed #EF4444;"></span>
+                    <span>重量阈值 (${weightThreshold})</span>
+                `;
+                container.appendChild(thresholdItem);
+                
+                // 添加各组图例
+                dataGroups.forEach(group => {
+                    const resultant = calculateResultant(group);
+                    const groupItem = document.createElement('div');
+                    groupItem.className = 'flex items-center';
+                    groupItem.innerHTML = `
+                        <span class="group-color-indicator mr-1" style="background-color: ${group.color};"></span>
+                        <span>${group.name} (P1/P2)</span>
+                        <span class="st-color-indicator ml-2" style="background-color: ${group.stColor}"></span>
+                        <span>ST (${resultant.magnitude.toFixed(2)})</span>
+                    `;
+                    container.appendChild(groupItem);
+                });
+            }
+            
+            // 渲染历史记录表格
+            function renderHistoryTable() {
+                const tableBody = document.getElementById('historyTableBody');
+                
+                if (savedHistory.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="9" class="py-4 px-4 text-center text-sm text-gray-500 italic">暂无保存的数据</td></tr>';
+                    return;
+                }
+                
+                tableBody.innerHTML = '';
+                
+                // 倒序显示，最新的在前面
+                [...savedHistory].reverse().forEach((item, index) => {
+                    const resultant = calculateResultant(item);
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-50';
+                    row.innerHTML = `
+                        <td class="py-2 px-4">${item.name}</td>
+                        <td class="py-2 px-4">${item.p1.weight.toFixed(2)}</td>
+                        <td class="py-2 px-4">${item.p1.angle.toFixed(1)}°</td>
+                        <td class="py-2 px-4">${item.p2.weight.toFixed(2)}</td>
+                        <td class="py-2 px-4">${item.p2.angle.toFixed(1)}°</td>
+                        <td class="py-2 px-4">${resultant.magnitude.toFixed(2)}</td>
+                        <td class="py-2 px-4">${resultant.angle.toFixed(1)}°</td>
+                        <td class="py-2 px-4 text-sm text-gray-500">${new Date(item.timestamp).toLocaleString()}</td>
+                        <td class="py-2 px-4">
+                            <div class="flex space-x-2">
+                                <button data-index="${savedHistory.length - 1 - index}" class="load-history text-primary text-xs">
+                                    <i class="fa fa-load"></i> 加载
+                                </button>
+                                <button data-index="${savedHistory.length - 1 - index}" class="delete-history text-gray-500 hover:text-warning text-xs">
+                                    <i class="fa fa-trash-o"></i> 删除
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+                
+                // 添加事件监听
+                document.querySelectorAll('.load-history').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const index = parseInt(this.getAttribute('data-index'));
+                        const item = savedHistory[index];
+                        
+                        // 创建新的数据组并加载历史数据
+                        addNewDataGroup(item.name, item.p1, item.p2);
+                    });
+                });
+                
+                document.querySelectorAll('.delete-history').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        if (confirm('确定要删除这条历史记录吗？')) {
+                            const index = parseInt(this.getAttribute('data-index'));
+                            savedHistory.splice(index, 1);
+                            localStorage.setItem('forceVectorSavedHistory', JSON.stringify(savedHistory));
+                            renderHistoryTable();
+                        }
+                    });
+                });
+            }
+            
+            let forceChart;
+            
+            // 更新图表 - 所有数据组在同一个圆上显示
+            function updateChart() {
+                try {
+                    document.getElementById('chartError').classList.add('hidden');
+                    
+                    // 收集所有组的数据
+                    const allGroupsData = displayOptions.showAllGroups ? dataGroups : [dataGroups[currentGroupIndex]];
+                    
+                    // 计算所有点的坐标和合力
+                    const allPoints = [];
+                    allGroupsData.forEach(group => {
+                        const p1 = polarToCartesian(group.p1.weight, group.p1.angle);
+                        const p2 = polarToCartesian(group.p2.weight, group.p2.angle);
+                        const resultant = calculateResultant(group);
+                        
+                        allPoints.push(p1, p2, resultant);
+                    });
+                    
+                    // 确定最大半径 - 适应所有点
+                    const maxDistance = allPoints.length > 0 
+                        ? Math.max(...allPoints.map(point => Math.sqrt(point.x**2 + point.y** 2)), weightThreshold)
+                        : weightThreshold;
+                    let maxRadius = maxDistance * 1.2;
+                    
+                    // 应用缩放
+                    const zoomFactor = zoomLevel / 100;
+                    maxRadius = maxRadius / zoomFactor;
+                    
+                    // 创建参考圆和阈值圆
+                    const circlePoints = createCirclePoints(maxRadius);
+                    const thresholdCirclePoints = createCirclePoints(weightThreshold);
+                    
+                    // 准备数据集
+                    const datasets = [
+                        // 参考圆
+                        {
+                            label: '参考圆',
+                            data: circlePoints,
+                            borderColor: 'rgba(200, 200, 200, 0.7)',
+                            borderWidth: 1.5,
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0,
+                            showLine: true,
+                            tension: 0.4,
+                            z: 1
+                        },
+                        // 阈值线
+                        {
+                            label: `重量阈值 (${weightThreshold})`,
+                            data: thresholdCirclePoints,
+                            borderColor: 'rgba(239, 68, 68, 0.8)',
+                            borderWidth: 2,
+                            borderDash: [3, 3],
+                            fill: false,
+                            pointRadius: 0,
+                            showLine: true,
+                            tension: 0.4,
+                            z: 2
+                        }
+                    ];
+                    
+                    // 为每个数据组添加数据集
+                    allGroupsData.forEach((group, groupIndex) => {
+                        const isCurrentGroup = groupIndex === (displayOptions.showAllGroups ? currentGroupIndex : 0);
+                        const p1 = polarToCartesian(group.p1.weight, group.p1.angle);
+                        const p2 = polarToCartesian(group.p2.weight, group.p2.angle);
+                        const resultant = calculateResultant(group);
+                        
+                        // P1到原点的线
+                        if (displayOptions.showVectors) {
+                            datasets.push({
+                                label: `${group.name} P1到原点`,
+                                data: [{x: 0, y: 0}, p1],
+                                borderColor: `${group.color}80`,
+                                borderWidth: isCurrentGroup ? 2 : 1.5,
+                                borderDash: [3, 3],
+                                fill: false,
+                                pointRadius: 0,
+                                showLine: true,
+                                z: 3
+                            });
+                        }
+                        
+                        // P2到原点的线
+                        if (displayOptions.showVectors) {
+                            datasets.push({
+                                label: `${group.name} P2到原点`,
+                                data: [{x: 0, y: 0}, p2],
+                                borderColor: `${group.color}80`,
+                                borderWidth: isCurrentGroup ? 2 : 1.5,
+                                borderDash: [3, 3],
+                                fill: false,
+                                pointRadius: 0,
+                                showLine: true,
+                                z: 3
+                            });
+                        }
+                        
+                        // 合力到原点的线 - 使用ST点颜色
+                        if (displayOptions.showVectors && displayOptions.showResultant) {
+                            datasets.push({
+                                label: `${group.name} 合力到原点`,
+                                data: [{x: 0, y: 0}, resultant],
+                                borderColor: `${group.stColor}A0`,
+                                borderWidth: isCurrentGroup ? 2.5 : 2,
+                                borderDash: [2, 2],
+                                fill: false,
+                                pointRadius: 0,
+                                showLine: true,
+                                z: 4
+                            });
+                        }
+                        
+                        // P1点 - 统一且更小的点大小
+                        if (displayOptions.showP1) {
+                            datasets.push({
+                                label: `${group.name} P1 (${group.p1.weight.toFixed(2)}, ${group.p1.angle.toFixed(1)}°)`,
+                                data: [p1],
+                                backgroundColor: group.p1.weight > weightThreshold ? 
+                                    'rgba(239, 68, 68, 0.9)' : `${group.color}E0`,
+                                borderColor: group.p1.weight > weightThreshold ? 
+                                    'rgba(239, 68, 68, 1)' : group.color,
+                                borderWidth: isCurrentGroup ? 1.5 : 1,
+                                pointRadius: isCurrentGroup ? 4 : 3,  // 统一且更小的点大小
+                                pointHoverRadius: isCurrentGroup ? 6 : 5,
+                                z: isCurrentGroup ? 20 : 10,
+                                pointType: 'P1',
+                                groupName: group.name
+                            });
+                        }
+                        
+                        // P2点 - 统一且更小的点大小（与P1相同）
+                        if (displayOptions.showP2) {
+                            datasets.push({
+                                label: `${group.name} P2 (${group.p2.weight.toFixed(2)}, ${group.p2.angle.toFixed(1)}°)`,
+                                data: [p2],
+                                backgroundColor: group.p2.weight > weightThreshold ? 
+                                    'rgba(239, 68, 68, 0.9)' : `${group.color}C0`,
+                                borderColor: group.p2.weight > weightThreshold ? 
+                                    'rgba(239, 68, 68, 1)' : group.color,
+                                borderWidth: isCurrentGroup ? 1.5 : 1,
+                                pointRadius: isCurrentGroup ? 4 : 3,  // 统一且更小的点大小（与P1相同）
+                                pointHoverRadius: isCurrentGroup ? 6 : 5,
+                                z: isCurrentGroup ? 20 : 10,
+                                pointType: 'P2',
+                                groupName: group.name
+                            });
+                        }
+                        
+                        // 合力点(ST点) - 统一且更小的点大小（与P1相同）
+                        if (displayOptions.showResultant) {
+                            datasets.push({
+                                label: `${group.name} 合力 (${resultant.magnitude.toFixed(2)}, ${resultant.angle.toFixed(1)}°)`,
+                                data: [resultant],
+                                backgroundColor: `${group.stColor}E0`,
+                                borderColor: group.stColor,
+                                borderWidth: isCurrentGroup ? 1.5 : 1,
+                                pointRadius: isCurrentGroup ? 4 : 3,  // 统一且更小的点大小（与P1相同）
+                                pointHoverRadius: isCurrentGroup ? 6 : 5,
+                                z: isCurrentGroup ? 21 : 11,
+                                pointType: 'ST',
+                                groupName: group.name
+                            });
+                        }
+                    });
+                    
+                    // 销毁现有图表
+                    if (forceChart) {
+                        forceChart.destroy();
+                    }
+                    
+                    // 创建角度标记插件
+                    const angleMarkerPlugin = {
+                        id: 'angleMarkers',
+                        afterDraw: (chart) => {
+                            if (!displayOptions.showAngleMarkers) return;
+                            
+                            const {ctx, chartArea, scales} = chart;
+                            if (!chartArea) return;
+                            
+                            ctx.save();
+                            
+                            // 角度标记间隔（每30度一个主要标记，每10度一个次要标记）
+                            const majorInterval = 30;
+                            const minorInterval = 10;
+                            const markerRadius = maxRadius * 1.05; // 略大于最大半径
+                            const tickLength = 6; // 刻度线长度
+                            const textOffset = 12; // 文本距离刻度线的偏移量
+                            
+                            // 绘制主要角度标记（0°, 30°, 60°, ..., 330°）
+                            for (let angle = 0; angle < 360; angle += majorInterval) {
+                                const rad = (angle * Math.PI) / 180;
+                                
+                                // 计算标记点位置
+                                const x1 = markerRadius * Math.cos(rad);
+                                const y1 = markerRadius * Math.sin(rad);
+                                const x2 = (markerRadius - tickLength) * Math.cos(rad);
+                                const y2 = (markerRadius - tickLength) * Math.sin(rad);
+                                
+                                // 转换为画布坐标
+                                const canvasX1 = scales.x.getPixelForValue(x1);
+                                const canvasY1 = scales.y.getPixelForValue(y1);
+                                const canvasX2 = scales.x.getPixelForValue(x2);
+                                const canvasY2 = scales.y.getPixelForValue(y2);
+                                
+                                // 绘制刻度线
+                                ctx.beginPath();
+                                ctx.moveTo(canvasX1, canvasY1);
+                                ctx.lineTo(canvasX2, canvasY2);
+                                ctx.strokeStyle = 'rgba(100, 100, 100, 0.8)';
+                                ctx.lineWidth = 1.5;
+                                ctx.stroke();
+                                
+                                // 绘制角度文本
+                                ctx.font = '11px Inter, sans-serif';
+                                ctx.fillStyle = 'rgba(50, 50, 50, 0.9)';
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                
+                                // 计算文本位置（稍微向外）
+                                const textX = (markerRadius + textOffset) * Math.cos(rad);
+                                const textY = (markerRadius + textOffset) * Math.sin(rad);
+                                const canvasTextX = scales.x.getPixelForValue(textX);
+                                const canvasTextY = scales.y.getPixelForValue(textY);
+                                
+                                // 特殊处理0°标记
+                                if (angle === 0) {
+                                    ctx.fillText('0°', canvasTextX, canvasTextY - 5);
+                                } else {
+                                    ctx.fillText(`${angle}°`, canvasTextX, canvasTextY);
+                                }
+                            }
+                            
+                            // 绘制次要角度标记（更短的刻度线）
+                            for (let angle = 0; angle < 360; angle += minorInterval) {
+                                // 跳过已绘制主要标记的角度
+                                if (angle % majorInterval === 0) continue;
+                                
+                                const rad = (angle * Math.PI) / 180;
+                                
+                                // 计算标记点位置（次要标记更短）
+                                const x1 = markerRadius * Math.cos(rad);
+                                const y1 = markerRadius * Math.sin(rad);
+                                const x2 = (markerRadius - tickLength / 2) * Math.cos(rad);
+                                const y2 = (markerRadius - tickLength / 2) * Math.sin(rad);
+                                
+                                // 转换为画布坐标
+                                const canvasX1 = scales.x.getPixelForValue(x1);
+                                const canvasY1 = scales.y.getPixelForValue(y1);
+                                const canvasX2 = scales.x.getPixelForValue(x2);
+                                const canvasY2 = scales.y.getPixelForValue(y2);
+                                
+                                // 绘制次要刻度线
+                                ctx.beginPath();
+                                ctx.moveTo(canvasX1, canvasY1);
+                                ctx.lineTo(canvasX2, canvasY2);
+                                ctx.strokeStyle = 'rgba(150, 150, 150, 0.6)';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+                            }
+                            
+                            ctx.restore();
+                        }
+                    };
+                    
+                    // 创建标签显示插件
+                    const labelPlugin = {
+                        id: 'pointLabels',
+                        afterDraw: (chart) => {
+                            if (!displayOptions.showLabels) return;
+                            
+                            const {ctx, chartArea, scales} = chart;
+                            if (!chartArea) return;
+                            
+                            ctx.save();
+                            
+                            // 遍历所有数据集
+                            chart.data.datasets.forEach((dataset, datasetIndex) => {
+                                // 只处理点数据集（P1, P2, ST）
+                                if (!dataset.pointType) return;
+                                
+                                // 获取数据集的元数据
+                                const meta = chart.getDatasetMeta(datasetIndex);
+                                if (!meta.visible) return;
+                                
+                                // 为每个点绘制标签
+                                meta.data.forEach((element, index) => {
+                                    const point = dataset.data[index];
+                                    if (!point) return;
+                                    
+                                    // 将数据坐标转换为画布坐标
+                                    const x = scales.x.getPixelForValue(point.x);
+                                    const y = scales.y.getPixelForValue(point.y);
+                                    
+                                    // 标签文本
+                                    const label = `${dataset.groupName} ${dataset.pointType}`;
+                                    
+                                    // 设置文本样式
+                                    ctx.font = '11px Inter, sans-serif';
+                                    ctx.fillStyle = dataset.borderColor;
+                                    ctx.textAlign = 'center';
+                                    ctx.textBaseline = 'middle';
+                                    
+                                    // 计算标签位置（在点的右下方）
+                                    const labelX = x + 12;
+                                    const labelY = y + 12;
+                                    
+                                    // 绘制文本阴影，提高可读性
+                                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                                    ctx.fillText(label, labelX, labelY);
+                                });
+                            });
+                            
+                            ctx.restore();
+                        }
+                    };
+                    
+                    // 创建新图表
+                    forceChart = new Chart(ctx, {
+                        type: 'scatter',
+                        data: { datasets },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            animation: {
+                                duration: 500,
+                                easing: 'easeOutCubic'
+                            },
+                            scales: {
+                                x: {
+                                    type: 'linear',
+                                    position: 'center',
+                                    min: -maxRadius,
+                                    max: maxRadius,
+                                    ticks: {
+                                        stepSize: Math.ceil(maxRadius / 5),
+                                        precision: 0
+                                    },
+                                    grid: {
+                                        color: 'rgba(200, 200, 200, 0.4)',
+                                        lineWidth: 1
+                                    },
+                                    border: {
+                                        color: 'rgba(0, 0, 0, 0.15)',
+                                        lineWidth: 1.5
+                                    }
+                                },
+                                y: {
+                                    type: 'linear',
+                                    position: 'center',
+                                    min: -maxRadius,
+                                    max: maxRadius,
+                                    ticks: {
+                                        stepSize: Math.ceil(maxRadius / 5),
+                                        precision: 0
+                                    },
+                                    grid: {
+                                        color: 'rgba(200, 200, 200, 0.4)',
+                                        lineWidth: 1
+                                    },
+                                    border: {
+                                        color: 'rgba(0, 0, 0, 0.15)',
+                                        lineWidth: 1.5
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: false // 我们使用自定义图例
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                                    padding: 10,
+                                    titleFont: {
+                                        size: 13,
+                                        weight: 'bold'
+                                    },
+                                    bodyFont: {
+                                        size: 12
+                                    }
+                                }
+                            },
+                            interaction: {
+                                mode: 'nearest',
+                                intersect: false
+                            }
+                        },
+                        plugins: [labelPlugin, angleMarkerPlugin]
+                    });
+                } catch (error) {
+                    console.error('图表渲染错误:', error);
+                    document.getElementById('chartError').classList.remove('hidden');
+                }
+            }
+            
+            // 添加新的数据组
+            function addNewDataGroup(name = null, p1Data = null, p2Data = null) {
+                const newId = dataGroups.length > 0 ? Math.max(...dataGroups.map(g => g.id)) + 1 : 1;
+                const newName = name || `组 ${newId}`;
+                
+                // 选择颜色（循环使用预定义颜色）
+                const colorIndex = dataGroups.length % groupColors.length;
+                const newColor = groupColors[colorIndex];
+                const newStColor = stColors[colorIndex];
+                
+                const newGroup = {
+                    id: newId,
+                    name: newName,
+                    color: newColor,
+                    stColor: newStColor,
+                    p1: p1Data || {
+                        weight: 25.00,
+                        angle: 45.0
+                    },
+                    p2: p2Data || {
+                        weight: 25.00,
+                        angle: 135.0
+                    }
+                };
+                
+                dataGroups.push(newGroup);
+                currentGroupIndex = dataGroups.length - 1;
+                
+                renderDataGroups();
+                updateChart();
+                updateResults();
+                updateLegend();
+                
+                return newGroup;
+            }
+            
+            // 缩放功能实现
+            function updateZoomDisplay() {
+                zoomLevelDisplay.textContent = `${zoomLevel}%`;
+                // 禁用/启用按钮基于当前缩放级别
+                zoomInBtn.disabled = zoomLevel >= maxZoom;
+                zoomOutBtn.disabled = zoomLevel <= minZoom;
+                zoomInBtn.classList.toggle('opacity-50', zoomLevel >= maxZoom);
+                zoomOutBtn.classList.toggle('opacity-50', zoomLevel <= minZoom);
+            }
+            
+            function zoomIn() {
+                if (zoomLevel < maxZoom) {
+                    zoomLevel += zoomStep;
+                    updateZoomDisplay();
+                    updateChart();
+                }
+            }
+            
+            function zoomOut() {
+                if (zoomLevel > minZoom) {
+                    zoomLevel -= zoomStep;
+                    updateZoomDisplay();
+                    updateChart();
+                }
+            }
+            
+            function resetZoom() {
+                zoomLevel = 100;
+                updateZoomDisplay();
+                updateChart();
+            }
+            
+            // 事件监听 - 缩放控制
+            zoomInBtn.addEventListener('click', zoomIn);
+            zoomOutBtn.addEventListener('click', zoomOut);
+            resetZoomBtn.addEventListener('click', resetZoom);
+            
+            // 鼠标滚轮缩放
+            canvas.addEventListener('wheel', function(e) {
+                e.preventDefault();
+                // 滚轮向上是放大，向下是缩小
+                if (e.deltaY < 0) {
+                    zoomIn();
+                } else {
+                    zoomOut();
+                }
+            });
+            
+            // 事件监听 - 新增数据组
+            document.getElementById('addNewGroupBtn').addEventListener('click', function() {
+                addNewDataGroup();
+                
+                // 显示添加成功提示
+                this.textContent = '已添加';
+                setTimeout(() => {
+                    this.innerHTML = '<i class="fa fa-plus mr-1"></i> 新增组';
+                }, 1500);
+            });
+            
+            // 事件监听 - 删除当前数据组
+            document.getElementById('deleteCurrentGroupBtn').addEventListener('click', function() {
+                if (dataGroups.length <= 1) {
+                    alert('至少需要保留一个数据组');
+                    return;
+                }
+                
+                if (confirm(`确定要删除当前组 "${dataGroups[currentGroupIndex].name}" 吗？`)) {
+                    dataGroups.splice(currentGroupIndex, 1);
+                    currentGroupIndex = 0; // 切换到第一个组
+                    
+                    renderDataGroups();
+                    updateChart();
+                    updateResults();
+                    updateLegend();
+                }
+            });
+            
+            // 事件监听 - 保存当前数据组到历史记录
+            document.getElementById('saveCurrentGroupBtn').addEventListener('click', function() {
+                const currentGroup = JSON.parse(JSON.stringify(dataGroups[currentGroupIndex]));
+                currentGroup.timestamp = new Date().getTime();
+                
+                // 检查是否已存在相同数据（避免重复保存）
+                const isDuplicate = savedHistory.some(item => 
+                    item.id === currentGroup.id &&
+                    item.p1.weight === currentGroup.p1.weight &&
+                    item.p1.angle === currentGroup.p1.angle &&
+                    item.p2.weight === currentGroup.p2.weight &&
+                    item.p2.angle === currentGroup.p2.angle
+                );
+                
+                if (!isDuplicate) {
+                    savedHistory.push(currentGroup);
+                    
+                    // 限制历史记录数量为50条
+                    if (savedHistory.length > 50) {
+                        savedHistory.shift();
+                    }
+                    
+                    localStorage.setItem('forceVectorSavedHistory', JSON.stringify(savedHistory));
+                    renderHistoryTable();
+                    
+                    // 显示保存成功提示
+                    this.textContent = '已保存';
+                    setTimeout(() => {
+                        this.innerHTML = '<i class="fa fa-save mr-1"></i> 保存当前组';
+                    }, 1500);
+                } else {
+                    alert('该数据已存在于历史记录中');
+                }
+            });
+            
+            // 事件监听 - 清空所有历史记录
+            document.getElementById('clearAllHistoryBtn').addEventListener('click', function() {
+                if (savedHistory.length === 0) return;
+                
+                if (confirm('确定要清空所有历史记录吗？此操作不可恢复。')) {
+                    savedHistory = [];
+                    localStorage.setItem('forceVectorSavedHistory', JSON.stringify(savedHistory));
+                    renderHistoryTable();
+                }
+            });
+            
+            // 事件监听 - 显示控制选项
+            document.getElementById('showAllGroups').addEventListener('change', function() {
+                displayOptions.showAllGroups = this.checked;
+                updateChart();
+            });
+            
+            document.getElementById('showP1').addEventListener('change', function() {
+                displayOptions.showP1 = this.checked;
+                updateChart();
+            });
+            
+            document.getElementById('showP2').addEventListener('change', function() {
+                displayOptions.showP2 = this.checked;
+                updateChart();
+            });
+            
+            document.getElementById('showResultant').addEventListener('change', function() {
+                displayOptions.showResultant = this.checked;
+                updateChart();
+            });
+            
+            document.getElementById('showVectors').addEventListener('change', function() {
+                displayOptions.showVectors = this.checked;
+                updateChart();
+            });
+            
+            // 标签显示控制
+            document.getElementById('showLabels').addEventListener('change', function() {
+                displayOptions.showLabels = this.checked;
+                updateChart();
+            });
+            
+            // 角度标记显示控制
+            document.getElementById('showAngleMarkers').addEventListener('change', function() {
+                displayOptions.showAngleMarkers = this.checked;
+                updateChart();
+            });
+            
+            // 事件监听 - P1重量滑块（使用0.01步长）
+            document.getElementById('p1Weight').addEventListener('input', function() {
+                dataGroups[currentGroupIndex].p1.weight = parseFloat(this.value);
+                document.getElementById('p1WeightValue').textContent = dataGroups[currentGroupIndex].p1.weight.toFixed(2);
+                document.getElementById('p1WeightInput').value = dataGroups[currentGroupIndex].p1.weight;
+                updateChart();
+                updateResults();
+            });
+            
+            // 事件监听 - P1角度滑块
+            document.getElementById('p1Angle').addEventListener('input', function() {
+                dataGroups[currentGroupIndex].p1.angle = parseFloat(this.value);
+                document.getElementById('p1AngleValue').textContent = dataGroups[currentGroupIndex].p1.angle.toFixed(1) + '°';
+                document.getElementById('p1AngleInput').value = dataGroups[currentGroupIndex].p1.angle;
+                updateChart();
+                updateResults();
+            });
+            
+            // 事件监听 - P1重量输入框（使用0.01步长）
+            document.getElementById('p1WeightInput').addEventListener('change', function() {
+                let value = parseFloat(this.value);
+                value = Math.min(Math.max(value, 0.01), 50);
+                dataGroups[currentGroupIndex].p1.weight = value;
+                document.getElementById('p1WeightValue').textContent = value.toFixed(2);
+                document.getElementById('p1Weight').value = value;
+                updateChart();
+                updateResults();
+            });
+            
+            // 事件监听 - P1角度输入框
+            document.getElementById('p1AngleInput').addEventListener('change', function() {
+                let value = parseFloat(this.value);
+                value = Math.min(Math.max(value, 0), 360);
+                dataGroups[currentGroupIndex].p1.angle = value;
+                document.getElementById('p1AngleValue').textContent = value.toFixed(1) + '°';
+                document.getElementById('p1Angle').value = value;
+                updateChart();
+                updateResults();
+            });
+            
+            // 事件监听 - P2重量滑块（使用0.01步长）
+            document.getElementById('p2Weight').addEventListener('input', function() {
+                dataGroups[currentGroupIndex].p2.weight = parseFloat(this.value);
+                document.getElementById('p2WeightValue').textContent = dataGroups[currentGroupIndex].p2.weight.toFixed(2);
+                document.getElementById('p2WeightInput').value = dataGroups[currentGroupIndex].p2.weight;
+                updateChart();
+                updateResults();
+            });
+            
+            // 事件监听 - P2角度滑块
+            document.getElementById('p2Angle').addEventListener('input', function() {
+                dataGroups[currentGroupIndex].p2.angle = parseFloat(this.value);
+                document.getElementById('p2AngleValue').textContent = dataGroups[currentGroupIndex].p2.angle.toFixed(1) + '°';
+                document.getElementById('p2AngleInput').value = dataGroups[currentGroupIndex].p2.angle;
+                updateChart();
+                updateResults();
+            });
+            
+            // 事件监听 - P2重量输入框（使用0.01步长）
+            document.getElementById('p2WeightInput').addEventListener('change', function() {
+                let value = parseFloat(this.value);
+                value = Math.min(Math.max(value, 0.01), 50);
+                dataGroups[currentGroupIndex].p2.weight = value;
+                document.getElementById('p2WeightValue').textContent = value.toFixed(2);
+                document.getElementById('p2Weight').value = value;
+                updateChart();
+                updateResults();
+            });
+            
+            // 事件监听 - P2角度输入框
+            document.getElementById('p2AngleInput').addEventListener('change', function() {
+                let value = parseFloat(this.value);
+                value = Math.min(Math.max(value, 0), 360);
+                dataGroups[currentGroupIndex].p2.angle = value;
+                document.getElementById('p2AngleValue').textContent = value.toFixed(1) + '°';
+                document.getElementById('p2Angle').value = value;
+                updateChart();
+                updateResults();
+            });
+            
+            // 事件监听 - 阈值滑块
+            document.getElementById('thresholdSlider').addEventListener('input', function() {
+                weightThreshold = parseFloat(this.value);
+                document.getElementById('thresholdValue').textContent = weightThreshold.toFixed(2);
+                document.getElementById('thresholdInput').value = weightThreshold;
+                updateChart();
+                updateResults();
+                updateLegend();
+            });
+            
+            // 事件监听 - 阈值输入框
+            document.getElementById('thresholdInput').addEventListener('change', function() {
+                let value = parseFloat(this.value);
+                value = Math.min(Math.max(value, 0.01), 50);
+                weightThreshold = value;
+                document.getElementById('thresholdValue').textContent = value.toFixed(2);
+                document.getElementById('thresholdSlider').value = value;
+                updateChart();
+                updateResults();
+                updateLegend();
+            });
+            
+            // 设置滑块样式
+            const style = document.createElement('style');
+            style.textContent = `
+                input[type=range]::-webkit-slider-thumb {
+                    background-color: var(--slider-thumb-color, #3B82F6);
+                }
+                input[type=range]::-moz-range-thumb {
+                    background-color: var(--slider-thumb-color, #3B82F6);
+                }
+                .zoom-btn:disabled {
+                    cursor: not-allowed;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // 初始化
+            renderDataGroups();
+            updateResults();
+            updateZoomDisplay();
+            updateChart();
+            updateLegend();
+            renderHistoryTable();
+        });
+    </script>
+</body>
+</html>
